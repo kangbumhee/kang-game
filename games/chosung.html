@@ -97,7 +97,8 @@ async function restartGame(){if(!isHost)return;await gameRef.remove();initGame()
 async function goToGameSelect(){
   if(!isHost)return;
   if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.destroy();gameRef.off();if(tickTimer)clearInterval(tickTimer);
+  Presence.setBackToLobby();Presence.destroy();gameRef.off();if(tickTimer)clearInterval(tickTimer);
+  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
   await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
   sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
 }
@@ -126,6 +127,13 @@ async function init(){
 
   document.getElementById('ansInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitAnswer();});
   gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
+  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
+    if(!snap.val())return;
+    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
+    Presence.destroy();gameRef.off();
+    sessionStorage.setItem('returnToLobby','true');
+    window.location.href='../index.html';
+  });
   tickTimer=setInterval(async()=>{
     const s=await gameRef.once('value');const d=s.val();
     if(!d||d.phase!=='playing')return;

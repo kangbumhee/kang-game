@@ -97,7 +97,8 @@ async function restartGame(){
 async function goToGameSelect(){
   if(!isHost)return;
   if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.destroy();gameRef.off();
+  Presence.setBackToLobby();Presence.destroy();gameRef.off();
+  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
   await db.ref(`rooms/${roomCode}/currentGame`).remove();
   await db.ref(`rooms/${roomCode}/gameData`).remove();
   sessionStorage.setItem('returnToLobby','true');
@@ -111,6 +112,13 @@ async function init(){
   isHost=(hs.val()===playerId);
   Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
   gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
+  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
+    if(!snap.val())return;
+    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
+    Presence.destroy();gameRef.off();
+    sessionStorage.setItem('returnToLobby','true');
+    window.location.href='../index.html';
+  });
 }
 
 function initGame(){

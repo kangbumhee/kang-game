@@ -16,6 +16,7 @@ const Lobby = {
       if (saved) {
         db.ref(`rooms/${saved}/currentGame`).remove();
         db.ref(`rooms/${saved}/gameData`).remove();
+        db.ref(`rooms/${saved}/backToLobby`).remove();
         db.ref(`rooms/${saved}/players/${this.playerId}`).update({
           location: 'lobby',
           status: 'online'
