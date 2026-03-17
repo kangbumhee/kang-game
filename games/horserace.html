@@ -580,7 +580,7 @@ function renderQuiz(d){
     html+=`<div style="text-align:center;font-size:0.8em;color:rgba(255,255,255,0.4)">답변: ${ac}/${tc}</div>`;
     document.getElementById('gameArea').innerHTML=html;document.getElementById('resultArea').style.display='none';document.getElementById('btnStart').style.display='none';
     if(isHost&&ac>=tc){document.getElementById('btnNext').style.display='';document.getElementById('btnNext').textContent='👁️ 다음 문제';}else{document.getElementById('btnNext').style.display='none';}
-    if(horses.find(h=>(h.pos||0)>=FINISH)&&isHost)gameRef.update({phase:'result',winner:horses.indexOf(horses.find(h=>(h.pos||0)>=FINISH))});}
+    if(horses.find(h=>(h.pos||0)>=FINISH)&&isHost)gameRef.update({phase:'result',winner:horses.indexOf(horses.find(h=>(h.pos||0)>=FINISH))});
   }else if(phase==='result'){
     const w=d.winner;const wName=(w>=0&&horses[w])?horses[w].name:'???';
     document.getElementById('status').textContent=`🏆 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
