@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>👀 눈치게임</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/sound.js"></script>
+<script src="../js/presence.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63);color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{font-size:1.6em;margin-bottom:8px}
+.info{background:rgba(255,255,255,0.1);padding:10px 20px;border-radius:12px;margin-bottom:12px;text-align:center;font-size:0.9em;max-width:500px}
+.status{font-size:1.1em;margin:10px 0;text-align:center}
+
+/* 모드 선택 */
+.mode-select{max-width:500px;width:100%;margin:15px auto}
+.mode-select h3{text-align:center;margin-bottom:12px}
+.mode-cards{display:flex;flex-direction:column;gap:10px}
+.mode-card{
+  padding:16px;border:3px solid rgba(255,255,255,0.1);border-radius:14px;
+  background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.2s;
+}
+.mode-card:hover{background:rgba(255,255,255,0.08)}
+.mode-card.selected{border-color:#667eea;background:rgba(102,126,234,0.12)}
+.mode-card .mode-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.mode-card .mode-icon{font-size:1.8em}
+.mode-card .mode-name{font-size:1.1em;font-weight:bold}
+.mode-card .mode-desc{font-size:0.8em;color:rgba(255,255,255,0.5);line-height:1.4}
+
+/* 클래식 모드 */
+.number-display{font-size:4em;font-weight:bold;text-align:center;margin:20px 0;color:#f1c40f}
+.tap-btn{
+  width:200px;height:200px;border-radius:50%;border:4px solid #667eea;
+  background:rgba(102,126,234,0.2);color:#fff;font-size:1.3em;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;margin:20px auto;transition:all 0.2s
+}
+.tap-btn:hover{background:rgba(102,126,234,0.4)}
+.tap-btn:disabled{opacity:0.4;cursor:not-allowed}
+.tap-btn.tapped{border-color:#2ecc71;background:rgba(46,204,113,0.3)}
+
+/* 타겟 모드 */
+.target-display{font-size:2em;text-align:center;margin:15px 0;font-weight:bold}
+.target-num{font-size:3em;color:#e74c3c;font-weight:900}
+.num-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:15px 0;max-width:400px}
+.num-btn{
+  width:60px;height:60px;border:2px solid rgba(255,255,255,0.2);border-radius:12px;
+  background:rgba(255,255,255,0.06);color:#fff;font-size:1.4em;font-weight:bold;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s
+}
+.num-btn:hover{background:rgba(255,255,255,0.15)}
+.num-btn:active{transform:scale(0.93)}
+.num-btn.sel{border-color:#667eea;background:rgba(102,126,234,0.3)}
+.num-btn.locked{pointer-events:none;opacity:0.7}
+.num-btn.correct-num{border-color:#2ecc71;background:rgba(46,204,113,0.3)}
+.num-btn.wrong-num{border-color:#e74c3c;background:rgba(231,76,60,0.3)}
+
+/* 경매 모드 */
+.auction-item{font-size:2.5em;text-align:center;margin:10px 0}
+.auction-name{font-size:1.2em;text-align:center;color:#f1c40f;margin-bottom:5px}
+.auction-desc{font-size:0.85em;text-align:center;color:rgba(255,255,255,0.5);margin-bottom:15px}
+.bid-area{display:flex;gap:8px;max-width:350px;width:100%;margin:10px auto;align-items:center}
+.bid-area input{flex:1;padding:12px;border-radius:10px;border:2px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.1);color:#fff;font-size:1.2em;text-align:center}
+.bid-area button{padding:12px 20px;border:none;border-radius:10px;background:#667eea;color:#fff;font-size:1em;cursor:pointer;font-weight:bold}
+.coins-display{text-align:center;font-size:1.1em;margin:8px 0}
+
+/* 리버스 모드 */
+.reverse-info{text-align:center;font-size:1.1em;margin:10px 0;color:#e74c3c;font-weight:bold}
+
+/* 공통 */
+.order-list{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:15px 0}
+.order-chip{padding:6px 14px;border-radius:20px;font-size:0.85em;color:#fff}
+.result-box{background:rgba(102,126,234,0.12);border:2px solid #667eea;border-radius:16px;padding:20px;text-align:center;max-width:500px;width:100%;margin:10px 0}
+.players-status{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0}
+.p-chip{padding:5px 12px;border-radius:20px;font-size:0.85em;color:#fff}
+.p-chip.dead{opacity:0.3;text-decoration:line-through}
+.scores table{width:100%;border-collapse:collapse;max-width:500px}
+.scores th,.scores td{padding:6px 10px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1)}
+.scores th{color:#f1c40f}
+.btn{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold;margin:5px}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-back{background:rgba(255,255,255,0.15);color:#fff}
+.end-buttons{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:15px}
+.end-buttons button{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold;transition:transform 0.15s}
+.end-buttons button:hover{transform:translateY(-2px);box-shadow:0 4px 15px rgba(0,0,0,0.3)}
+.btn-retry{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-lobby2{background:rgba(255,255,255,0.15);color:#fff}
+.wait-msg{color:rgba(255,255,255,0.5);font-size:0.9em;animation:wmPulse 1.5s infinite}
+@keyframes wmPulse{0%,100%{opacity:1}50%{opacity:0.5}}
+</style>
+</head>
+<body data-bgm="tense">
+<h1>👀 눈치게임</h1>
+<div class="info" id="infoText">다양한 눈치 모드 중 하나를 골라 플레이!</div>
+<div class="status" id="status">⏳ 로딩 중...</div>
+
+<!-- 모드 선택 (호스트) -->
+<div class="mode-select" id="modeSelect" style="display:none">
+  <h3>🎮 게임 모드 선택</h3>
+  <div class="mode-cards">
+    <div class="mode-card selected" data-mode="classic" onclick="selectMode('classic')">
+      <div class="mode-header"><span class="mode-icon">🔢</span><span class="mode-name">클래식</span></div>
+      <div class="mode-desc">1부터 차례대로 숫자를 외치세요! 같은 숫자를 동시에 외치거나 마지막에 남으면 탈락!</div>
+    </div>
+    <div class="mode-card" data-mode="target" onclick="selectMode('target')">
+      <div class="mode-header"><span class="mode-icon">🎯</span><span class="mode-name">타겟 넘버</span></div>
+      <div class="mode-desc">목표 숫자가 주어집니다. 각자 숫자를 하나씩 내서 합이 딱 맞으면 전원 생존! 넘으면 마지막에 낸 사람 탈락!</div>
+    </div>
+    <div class="mode-card" data-mode="auction" onclick="selectMode('auction')">
+      <div class="mode-header"><span class="mode-icon">💰</span><span class="mode-name">눈치 경매</span></div>
+      <div class="mode-desc">100코인으로 시작! 물건의 가치를 예측해서 입찰하세요. 가장 가까운 사람이 획득! 초과하면 코인만 날림!</div>
+    </div>
+    <div class="mode-card" data-mode="reverse" onclick="selectMode('reverse')">
+      <div class="mode-header"><span class="mode-icon">🔄</span><span class="mode-name">리버스</span></div>
+      <div class="mode-desc">숫자를 가장 늦게 누르면 생존! 하지만 아무도 안 누르면 전원 탈락! 눈치로 버티세요!</div>
+    </div>
+    <div class="mode-card" data-mode="bomb" onclick="selectMode('bomb')">
+      <div class="mode-header"><span class="mode-icon">💣</span><span class="mode-name">폭탄 숫자</span></div>
+      <div class="mode-desc">1~30 중 폭탄 숫자 3개가 숨겨져 있습니다. 순서대로 숫자를 외치되, 폭탄을 밟으면 탈락!</div>
+    </div>
+  </div>
+  <button class="btn btn-primary" style="width:100%;margin-top:15px;font-size:1.1em;" onclick="hostStart()">🎮 시작!</button>
+</div>
+
+<!-- 게스트 대기 -->
+<div id="guestWait" style="display:none;text-align:center;margin:20px;color:rgba(255,255,255,0.5)">
+  방장이 모드를 선택하고 있습니다...
+</div>
+
+<!-- 게임 영역 -->
+<div id="gameArea" style="display:none;width:100%;max-width:500px;">
+  <!-- 플레이어 상태 -->
+  <div class="players-status" id="playersStatus"></div>
+  <!-- 동적 콘텐츠 -->
+  <div id="dynamicArea"></div>
+  <!-- 순서 목록 -->
+  <div class="order-list" id="orderList"></div>
+</div>
+
+<div id="resultArea" style="display:none"></div>
+
+<div class="scores" id="scoreArea" style="display:none">
+  <h3 style="text-align:center;margin-bottom:5px">📊 점수</h3>
+  <table><thead><tr><th>이름</th><th>점수</th></tr></thead><tbody id="scoreBody"></tbody></table>
+</div>
+
+<div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+  <button class="btn btn-primary" id="btnNext" style="display:none" onclick="nextRound()">➡️ 다음</button>
+  <button class="btn btn-back" id="btnBackMain" onclick="backToLobby()">🔙 로비로 돌아가기</button>
+</div>
+<div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;">
+  🔊 <input type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵 ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'tense');this.textContent='🎵 OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON/OFF</button>
+</div>
+
+<script>
+const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
+const gameRef=db.ref(`rooms/${roomCode}/gameData`);
+let isHost=false,currentPlayers={};
+let lastRoundId=0;
+const TOTAL_ROUNDS=5;
+let selectedMode='classic';
+
+function getName(pid){return(currentPlayers[pid]&&currentPlayers[pid].name)||'익명';}
+function getColor(pid){return Utils.getColor(Object.keys(currentPlayers).indexOf(pid));}
+
+let lastGameMode='classic';
+
+function renderEndButtons(container){
+  let html='<div class="end-buttons">';
+  if(isHost){
+    html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
+    html+='<button class="btn-lobby2" onclick="goToModeSelect()">🎮 다른 모드 선택</button>';
+  }else{
+    html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
+  }
+  html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
+  html+='</div>';
+  container.innerHTML=html;
+}
+
+async function restartGame(){
+  if(!isHost)return;
+  await gameRef.remove();
+  selectedMode=lastGameMode||'classic';
+  document.querySelectorAll('.mode-card').forEach(c=>c.classList.toggle('selected',c.dataset.mode===selectedMode));
+  hostStart();
+}
+
+async function goToModeSelect(){
+  if(!isHost)return;
+  await gameRef.remove();
+}
+
+async function goToGameSelect(){
+  if(!isHost)return;
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  stopReverseCountdown();
+  stopTargetTurnTimer();
+  if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
+  Presence.destroy();gameRef.off();
+  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
+  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+}
+
+// ── 모드 선택 ──
+function selectMode(mode){
+  selectedMode=mode;
+  document.querySelectorAll('.mode-card').forEach(c=>c.classList.toggle('selected',c.dataset.mode===mode));
+}
+
+async function hostStart(){
+  if(!isHost)return;
+  const freshSnap=await db.ref(`rooms/${roomCode}/players`).once('value');
+  const raw=freshSnap.val()||{};
+  currentPlayers={};
+  Object.keys(raw).forEach(pid=>{
+    if(raw[pid]&&raw[pid].name) currentPlayers[pid]=raw[pid];
+  });
+  const pids=Object.keys(currentPlayers);
+
+  if(pids.length<2){alert('2명 이상 필요합니다!');return;}
+
+  const alive={};pids.forEach(p=>{alive[p]=true;});
+
+  const base={
+    mode:selectedMode,
+    round:1,
+    phase:'playing',
+    alive,
+    scores:{},
+    eliminated:null,
+    roundId:Date.now()
+  };
+
+  if(selectedMode==='classic'){
+    Object.assign(base,{currentNum:0,taps:null});
+  }else if(selectedMode==='target'){
+    const al=pids.slice();
+    const target=pids.length*5+Math.floor(Math.random()*pids.length*3)+5;
+    Object.assign(base,{
+      target,
+      currentSum:0,
+      picks:null,
+      turnOrder:al,
+      turnIdx:0,
+      lastPicker:null,
+      lapCount:1,
+      turnTimeLimit:10,
+      turnStart:Date.now()
+    });
+  }else if(selectedMode==='auction'){
+    const coins={};pids.forEach(p=>{coins[p]=100;});
+    const items=generateAuctionItems();
+    Object.assign(base,{coins,items,bids:null,itemIdx:0});
+  }else if(selectedMode==='reverse'){
+    Object.assign(base,{currentNum:0,taps:null,timeLimit:15,roundStart:Date.now()});
+  }else if(selectedMode==='bomb'){
+    const al=pids.slice();
+    const maxNum=pids.length*8+10;
+    const bombCount=Math.min(5,Math.max(3,pids.length+1));
+    const bombs=[];
+    while(bombs.length<bombCount){
+      const n=Math.floor(Math.random()*maxNum)+1;
+      if(!bombs.includes(n))bombs.push(n);
+    }
+    Object.assign(base,{
+      bombs,
+      maxNum,
+      bombCount,
+      currentNum:0,
+      history:null,
+      turnOrder:al,
+      turnIdx:0,
+      comboSafe:0
+    });
+  }
+
+  await gameRef.set(base);
+}
+
+function generateAuctionItems(){
+  const pool=[
+    {icon:'🏠',name:'작은 오두막',value:45},{icon:'🚗',name:'중고차',value:30},
+    {icon:'💎',name:'다이아몬드',value:80},{icon:'🎸',name:'기타',value:25},
+    {icon:'🖼️',name:'명화',value:65},{icon:'📱',name:'최신폰',value:55},
+    {icon:'⌚',name:'명품시계',value:70},{icon:'🏖️',name:'여행권',value:50},
+    {icon:'🎮',name:'게임기',value:35},{icon:'🍕',name:'1년 피자',value:40},
+    {icon:'🐶',name:'강아지 인형',value:15},{icon:'🚀',name:'우주 여행권',value:90}
+  ];
+  return pool.sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
+}
+
+// ── 초기화 ──
+async function init(){
+  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
+  const raw=snap.val()||{};
+  currentPlayers={};
+  Object.keys(raw).forEach(pid=>{
+    if(raw[pid]&&raw[pid].name) currentPlayers[pid]=raw[pid];
+  });
+  const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
+  isHost=(hs.val()===playerId);
+
+  Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
+
+  gameRef.on('value',s=>{
+    const d=s.val();
+    if(!d){showModeSelect();return;}
+    render(d);
+  });
+
+  if(isHost){
+    targetTimeoutChecker=setInterval(async()=>{
+      const s=await gameRef.once('value');const dd=s.val();
+      if(!dd||dd.mode!=='target'||dd.phase!=='playing')return;
+      const elapsed=(Date.now()-(dd.turnStart||Date.now()))/1000;
+      const limit=dd.turnTimeLimit||10;
+      if(elapsed<limit)return;
+      const alive=dd.alive||{};
+      const tOrder=(dd.turnOrder||[]).filter(p=>alive[p]&&currentPlayers[p]);
+      if(tOrder.length===0)return;
+      const tIdx=dd.turnIdx||0;
+      const curTurn=tOrder[tIdx%tOrder.length];
+      if(dd.picks&&dd.picks[curTurn]!==undefined)return;
+      const lapCount=dd.lapCount||1;
+      const forcePick=5;
+      const newSum=(dd.currentSum||0)+forcePick;
+      const target=dd.target||20;
+
+      await gameRef.child(`picks/${curTurn}`).set(forcePick);
+
+      if(newSum>target){
+        alive[curTurn]=false;
+        const scores=dd.scores||{};
+        Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]).forEach(p=>{scores[p]=(scores[p]||0)+10;});
+        SoundEffects.play('explode');
+        await gameRef.update({
+          currentSum:newSum,turnIdx:tIdx+1,lastPicker:curTurn,
+          phase:'roundEnd',alive,eliminated:[curTurn],scores
+        });
+      }else if(newSum===target){
+        const scores=dd.scores||{};
+        scores[curTurn]=(scores[curTurn]||0)+25;
+        Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]&&p!==curTurn).forEach(p=>{scores[p]=(scores[p]||0)+5;});
+        SoundEffects.play('fanfare');
+        await gameRef.update({
+          currentSum:newSum,turnIdx:tIdx+1,lastPicker:curTurn,
+          phase:'roundEnd',eliminated:[],scores
+        });
+      }else{
+        const nextIdx=tIdx+1;
+        if(nextIdx>=tOrder.length){
+          await gameRef.update({
+            currentSum:newSum,turnIdx:0,lastPicker:curTurn,
+            picks:null,lapCount:lapCount+1,
+            turnTimeLimit:Math.max(5,(dd.turnTimeLimit||10)-1),
+            turnStart:Date.now(),roundId:Date.now()
+          });
+        }else{
+          await gameRef.update({
+            currentSum:newSum,turnIdx:nextIdx,lastPicker:curTurn,
+            turnStart:Date.now()
+          });
+        }
+      }
+    },1000);
+  }
+}
+
+function showModeSelect(){
+  document.getElementById('modeSelect').style.display=isHost?'':'none';
+  document.getElementById('guestWait').style.display=isHost?'none':'';
+  document.getElementById('gameArea').style.display='none';
+  document.getElementById('resultArea').style.display='none';
+  document.getElementById('scoreArea').style.display='none';
+  document.getElementById('btnNext').style.display='none';
+  document.getElementById('status').textContent='🎮 모드를 선택하세요';
+  document.getElementById('infoText').textContent='다양한 눈치 모드 중 하나를 골라 플레이!';
+}
+
+// ── 메인 렌더 ──
+function render(d){
+  if(!d)return;
+
+  document.getElementById('modeSelect').style.display='none';
+  document.getElementById('guestWait').style.display='none';
+  document.getElementById('gameArea').style.display='';
+
+  const mode=d.mode||'classic';
+  const phase=d.phase||'playing';
+  const alive=d.alive||{};
+  const scores=d.scores||{};
+
+  if(d.roundId&&d.roundId!==lastRoundId){lastRoundId=d.roundId;}
+
+  // 모드별 info 텍스트
+  const infoMap={
+    classic:'1부터 차례대로 숫자를 외치세요! 동시에 외치거나 마지막에 남으면 탈락!',
+    target:'목표 숫자에 딱 맞추세요! 합이 넘으면 마지막에 낸 사람 탈락!',
+    auction:'물건의 가치를 예측해서 입찰! 가장 가까운 사람이 획득!',
+    reverse:'가장 늦게 누르면 생존! 하지만 아무도 안 누르면 전원 탈락!',
+    bomb:'순서대로 숫자를 외치되, 숨겨진 폭탄 숫자를 밟으면 탈락!'
+  };
+  document.getElementById('infoText').textContent=infoMap[mode]||'';
+
+  if(phase==='final'){renderFinal(scores,mode);return;}
+
+  // 플레이어 상태 칩
+  renderPlayerChips(alive);
+
+  // 모드별 렌더
+  if(mode==='classic')renderClassic(d);
+  else if(mode==='target')renderTarget(d);
+  else if(mode==='auction')renderAuction(d);
+  else if(mode==='reverse')renderReverse(d);
+  else if(mode==='bomb')renderBomb(d);
+
+  renderScores(scores);
+}
+
+function renderPlayerChips(alive){
+  let html='';
+  Object.keys(currentPlayers).forEach((pid,i)=>{
+    const isDead=alive[pid]===false;
+    html+=`<span class="p-chip ${isDead?'dead':''}" style="background:${Utils.getColor(i)}">${getName(pid)}</span>`;
+  });
+  document.getElementById('playersStatus').innerHTML=html;
+}
+
+// ════════════════════════════════════════
+// 모드 1: 클래식
+// ════════════════════════════════════════
+function renderClassic(d){
+  const phase=d.phase,round=d.round||1,alive=d.alive||{},taps=d.taps||{};
+  const aliveIds=Object.keys(alive).filter(p=>alive[p]);
+
+  if(phase==='playing'){
+    document.getElementById('status').textContent=`🔢 라운드 ${round}/${TOTAL_ROUNDS} — 눈치껏 눌러!`;
+    const amAlive=alive[playerId];
+    const hasTapped=!!taps[playerId];
+
+    let html=`<div class="number-display">${d.currentNum||0}</div>`;
+    html+=`<button class="tap-btn ${hasTapped?'tapped':''}" id="tapBtnClassic" onclick="tapClassic()" ${(!amAlive||hasTapped)?'disabled':''}>${!amAlive?'탈락 😢':hasTapped?'✅ 외침!':'눌러서<br>숫자 외치기!'}</button>`;
+    document.getElementById('dynamicArea').innerHTML=html;
+
+    renderTapOrder(taps);
+    document.getElementById('resultArea').style.display='none';
+    document.getElementById('btnNext').style.display='none';
+
+    if(isHost&&aliveIds.length>1){
+      const aliveTapped=aliveIds.filter(p=>taps[p]);
+      if(aliveTapped.length>=aliveIds.length-1)setTimeout(()=>checkClassicEnd(d),500);
+    }
+  }else if(phase==='roundEnd'){
+    document.getElementById('status').textContent=`📊 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
+    document.getElementById('dynamicArea').innerHTML=`<div class="number-display">${d.currentNum||0}</div>`;
+    renderTapOrder(taps);
+    renderEliminated(d.eliminated);
+    showNextBtn(alive,round);
+  }
+}
+
+async function tapClassic(){
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.mode!=='classic')return;
+  if(!(d.alive||{})[playerId]||(d.taps||{})[playerId])return;
+  SoundEffects.play('click');
+  const newNum=(d.currentNum||0)+1;
+  await gameRef.child(`taps/${playerId}`).set({num:newNum,time:Date.now(),name:playerName});
+  await gameRef.child('currentNum').set(newNum);
+}
+
+async function checkClassicEnd(){
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.mode!=='classic')return;
+  const alive=d.alive||{},taps=d.taps||{};
+  const aliveIds=Object.keys(alive).filter(p=>alive[p]);
+
+  const numMap={};
+  Object.entries(taps).forEach(([pid,info])=>{const n=info.num;if(!numMap[n])numMap[n]=[];numMap[n].push(pid);});
+
+  let elim=[];
+  Object.values(numMap).forEach(pids=>{if(pids.length>1)pids.forEach(p=>{if(!elim.includes(p))elim.push(p);});});
+  aliveIds.forEach(p=>{if(!taps[p]&&!elim.includes(p))elim.push(p);});
+  if(elim.length===0&&aliveIds.length>1){
+    const sorted=Object.entries(taps).filter(([p])=>alive[p]).sort((a,b)=>(b[1].time||0)-(a[1].time||0));
+    if(sorted.length>0)elim.push(sorted[0][0]);
+  }
+
+  elim.forEach(p=>{alive[p]=false;});
+  const scores=d.scores||{};
+  Object.keys(alive).filter(p=>alive[p]).forEach(p=>{scores[p]=(scores[p]||0)+10;});
+  SoundEffects.play('eliminate');
+  await gameRef.update({phase:'roundEnd',alive,eliminated:elim,scores});
+}
+
+// ════════════════════════════════════════
+// 모드 2: 타겟 넘버
+// ════════════════════════════════════════
+let targetTurnTimer=null;
+
+function renderTarget(d){
+  const phase=d.phase,round=d.round||1,alive=d.alive||{},picks=d.picks||{};
+  const target=d.target||20,currentSum=d.currentSum||0;
+  const rawOrder=d.turnOrder||[];const turnIdx=d.turnIdx||0;
+  const turnOrder=rawOrder.filter(p=>alive[p]&&currentPlayers[p]);
+  const currentTurn=turnOrder.length>0?turnOrder[turnIdx%turnOrder.length]:'';
+  const aliveIds=Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]);
+  const lapCount=d.lapCount||1;
+  const turnTimeLimit=d.turnTimeLimit||10;
+
+  const minPick=Math.min(lapCount,5);
+  const maxPick=5;
+
+  Presence.setCurrentHolder(phase==='playing'?currentTurn:null);
+
+  if(phase==='playing'){
+    const isMyTurn=(currentTurn===playerId);
+    const amAlive=alive[playerId];
+    const remaining=target-currentSum;
+    const dangerZone=remaining<=maxPick;
+    const criticalZone=remaining<=minPick;
+
+    document.getElementById('status').textContent=`🎯 라운드 ${round}/${TOTAL_ROUNDS} — 목표를 맞춰라!`;
+
+    let html='';
+
+    const pct=Math.min(100,Math.round((currentSum/target)*100));
+    const barColor=criticalZone?'#e74c3c':dangerZone?'#f39c12':'#2ecc71';
+
+    html+=`<div style="text-align:center;margin:8px 0">`;
+    html+=`<div style="font-size:0.85em;color:rgba(255,255,255,0.5)">목표</div>`;
+    html+=`<div style="font-size:3.2em;font-weight:900;color:#e74c3c">${target}</div>`;
+    html+=`</div>`;
+
+    html+=`<div style="max-width:400px;width:100%;margin:6px auto">`;
+    html+=`<div style="display:flex;justify-content:space-between;font-size:0.85em;margin-bottom:3px">`;
+    html+=`<span>합: <b style="color:${barColor}">${currentSum}</b></span>`;
+    html+=`<span>남은: <b style="color:${criticalZone?'#e74c3c':'#f1c40f'}">${remaining}</b></span>`;
+    html+=`</div>`;
+    html+=`<div style="width:100%;height:18px;background:rgba(255,255,255,0.1);border-radius:9px;overflow:hidden">`;
+    html+=`<div style="width:${pct}%;height:100%;background:${barColor};border-radius:9px;transition:width 0.3s"></div>`;
+    html+=`</div>`;
+    html+=`</div>`;
+
+    html+=`<div style="display:flex;justify-content:center;gap:12px;margin:8px 0;font-size:0.85em">`;
+    html+=`<span>🔄 ${lapCount}바퀴째</span>`;
+    html+=`<span>최소 선택: <b style="color:${minPick>=3?'#e74c3c':'#f1c40f'}">${minPick}</b></span>`;
+    html+=`</div>`;
+
+    if(lapCount>=3){
+      html+=`<div style="text-align:center;color:#e74c3c;font-size:0.9em;animation:pulse 0.5s infinite">⚠️ ${lapCount}바퀴! 최소 ${minPick}부터 선택해야 합니다!</div>`;
+    }
+
+    html+=`<div style="display:flex;gap:6px;justify-content:center;margin:10px 0;flex-wrap:wrap">`;
+    turnOrder.forEach((pid,i)=>{
+      const isCur=(pid===currentTurn);
+      const color=getColor(pid);
+      html+=`<div style="padding:4px 10px;border-radius:10px;font-size:0.8em;background:${isCur?color:'rgba(255,255,255,0.06)'};border:2px solid ${isCur?'#fff':'transparent'};opacity:${isCur?1:0.5}">${getName(pid)}${isCur?' 👈':''}</div>`;
+    });
+    html+=`</div>`;
+
+    html+=`<div style="text-align:center;margin:5px 0"><span id="targetTurnTimer" style="font-size:1.8em;font-weight:bold;color:#f1c40f">--</span></div>`;
+
+    if(isMyTurn&&amAlive){
+      html+=`<div style="text-align:center;color:#f1c40f;margin:6px 0;font-size:1em">⚡ 당신의 차례! (${minPick}~${maxPick} 중 선택)</div>`;
+      html+=`<div class="num-btns" style="max-width:350px;margin:0 auto">`;
+      for(let n=1;n<=maxPick;n++){
+        const disabled=n<minPick;
+        const wouldExceed=(currentSum+n)>target;
+        const wouldMatch=(currentSum+n)===target;
+        let btnStyle='';
+        if(disabled)btnStyle='opacity:0.2;pointer-events:none;';
+        else if(wouldMatch)btnStyle='border-color:#2ecc71;background:rgba(46,204,113,0.2);color:#2ecc71;';
+        else if(wouldExceed)btnStyle='border-color:#e74c3c;background:rgba(231,76,60,0.2);color:#e74c3c;';
+        html+=`<div class="num-btn" onclick="${disabled?'':'pickTarget('+n+')'}" style="${btnStyle}">${n}${wouldExceed?'💥':wouldMatch?'✅':''}</div>`;
+      }
+      html+=`</div>`;
+    }else if(!amAlive){
+      html+=`<div style="text-align:center;color:rgba(255,255,255,0.4);margin:12px">탈락 😢</div>`;
+    }else{
+      html+=`<div style="text-align:center;color:rgba(255,255,255,0.5);margin:12px;font-size:1.1em">${getName(currentTurn)}의 차례... 🤔</div>`;
+    }
+
+    const pickEntries=Object.entries(picks);
+    if(pickEntries.length>0){
+      html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px">`;
+      pickEntries.forEach(([pid,val])=>{
+        html+=`<span class="order-chip" style="background:${getColor(pid)}">${getName(pid)}: +${val}</span>`;
+      });
+      html+=`</div>`;
+    }
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('orderList').innerHTML='';
+    document.getElementById('resultArea').style.display='none';
+    document.getElementById('btnNext').style.display='none';
+
+    startTargetTurnTimer(d.turnStart||Date.now(), turnTimeLimit, currentTurn);
+
+  }else if(phase==='roundEnd'){
+    stopTargetTurnTimer();
+    document.getElementById('status').textContent=`📊 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
+    Presence.setCurrentHolder(null);
+
+    const lastPicker=d.lastPicker;
+    const exceeded=currentSum>target;
+    const perfect=currentSum===target;
+
+    let html=`<div style="text-align:center;margin:10px 0">`;
+    html+=`<div style="font-size:0.9em;color:rgba(255,255,255,0.5)">목표: ${target}</div>`;
+    html+=`<div style="font-size:3em;font-weight:900;color:${exceeded?'#e74c3c':perfect?'#2ecc71':'#f1c40f'}">${currentSum}</div>`;
+    if(exceeded)html+=`<div style="font-size:1.2em;color:#e74c3c;margin:5px 0">💥 초과! (+${currentSum-target})</div>`;
+    else if(perfect)html+=`<div style="font-size:1.2em;color:#2ecc71;margin:5px 0">🎯 정확! ${getName(lastPicker||'')} 보너스!</div>`;
+    html+=`</div>`;
+
+    html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0">`;
+    Object.entries(picks).forEach(([pid,val])=>{
+      const isLast=pid===lastPicker;
+      const chipColor=isLast&&exceeded?'#e74c3c':getColor(pid);
+      html+=`<span class="order-chip" style="background:${chipColor}">${getName(pid)}: +${val}${isLast&&exceeded?' 💥':''}</span>`;
+    });
+    html+=`</div>`;
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('orderList').innerHTML='';
+    renderEliminated(d.eliminated);
+    showNextBtn(alive,round);
+  }
+}
+
+function startTargetTurnTimer(startTime, limitSec, turnPid){
+  stopTargetTurnTimer();
+  function tick(){
+    const el=document.getElementById('targetTurnTimer');
+    if(!el){stopTargetTurnTimer();return;}
+    const elapsed=(Date.now()-startTime)/1000;
+    const remain=Math.max(0,limitSec-elapsed);
+    el.textContent=remain.toFixed(1)+'초';
+    if(remain<=3)el.style.color='#e74c3c';
+    else if(remain<=6)el.style.color='#f39c12';
+    else el.style.color='#f1c40f';
+    if(remain<=0){
+      el.textContent='⏰ 시간초과!';
+      el.style.color='#e74c3c';
+      stopTargetTurnTimer();
+    }
+  }
+  tick();
+  targetTurnTimer=setInterval(tick,100);
+}
+
+function stopTargetTurnTimer(){
+  if(targetTurnTimer){clearInterval(targetTurnTimer);targetTurnTimer=null;}
+}
+
+async function pickTarget(n){
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.mode!=='target')return;
+
+  const alive=d.alive||{};
+  const rawOrder=d.turnOrder||[];const turnIdx=d.turnIdx||0;
+  const turnOrder=rawOrder.filter(p=>alive[p]&&currentPlayers[p]);
+  if(turnOrder.length===0)return;
+  const currentTurn=turnOrder[turnIdx%turnOrder.length];
+  if(currentTurn!==playerId)return;
+
+  const lapCount=d.lapCount||1;
+  const minPick=Math.min(lapCount,5);
+  if(n<minPick)return;
+
+  SoundEffects.play('click');
+  const newSum=(d.currentSum||0)+n;
+  const target=d.target||20;
+
+  await gameRef.child(`picks/${playerId}`).set(n);
+
+  const nextTurnIdx=turnIdx+1;
+
+  if(newSum>target){
+    alive[playerId]=false;
+    const scores=d.scores||{};
+    Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]).forEach(p=>{scores[p]=(scores[p]||0)+10;});
+    SoundEffects.play('explode');
+    await gameRef.update({
+      currentSum:newSum,turnIdx:nextTurnIdx,lastPicker:playerId,
+      phase:'roundEnd',alive,eliminated:[playerId],scores
+    });
+    return;
+  }
+
+  if(newSum===target){
+    const scores=d.scores||{};
+    scores[playerId]=(scores[playerId]||0)+25;
+    Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]&&p!==playerId).forEach(p=>{scores[p]=(scores[p]||0)+5;});
+    SoundEffects.play('fanfare');
+    await gameRef.update({
+      currentSum:newSum,turnIdx:nextTurnIdx,lastPicker:playerId,
+      phase:'roundEnd',eliminated:[],scores
+    });
+    return;
+  }
+
+  const aliveOrder=turnOrder;
+  const nextInOrder=aliveOrder[nextTurnIdx%aliveOrder.length];
+  const nextAlreadyPicked=d.picks&&d.picks[nextInOrder]!==undefined;
+
+  if(nextAlreadyPicked||nextTurnIdx>=aliveOrder.length){
+    const newLap=(lapCount||1)+1;
+    const newTimeLimit=Math.max(5,(d.turnTimeLimit||10)-1);
+    await gameRef.update({
+      currentSum:newSum,turnIdx:0,lastPicker:playerId,
+      picks:null,lapCount:newLap,turnTimeLimit:newTimeLimit,
+      turnStart:Date.now(),roundId:Date.now()
+    });
+  }else{
+    await gameRef.update({
+      currentSum:newSum,turnIdx:nextTurnIdx,lastPicker:playerId,
+      turnStart:Date.now()
+    });
+  }
+}
+
+// ════════════════════════════════════════
+// 모드 3: 눈치 경매
+// ════════════════════════════════════════
+function renderAuction(d){
+  const phase=d.phase,round=d.round||1;
+  const coins=d.coins||{},bids=d.bids||{},items=d.items||[];
+  const itemIdx=d.itemIdx||0;
+  const item=items[itemIdx];
+  if(!item)return;
+
+  if(phase==='playing'){
+    document.getElementById('status').textContent=`💰 라운드 ${round}/${TOTAL_ROUNDS} — 입찰!`;
+    const myCoins=coins[playerId]||0;
+    const myBid=bids[playerId];
+    const aliveIds=Object.keys(currentPlayers);
+    const bidCount=Object.keys(bids).length;
+
+    let html=`<div class="auction-item">${item.icon}</div>`;
+    html+=`<div class="auction-name">${item.name}</div>`;
+    html+=`<div class="auction-desc">이 물건의 진짜 가치는? (0~100)</div>`;
+    html+=`<div class="coins-display">💰 내 코인: <b style="color:#f1c40f">${myCoins}</b></div>`;
+
+    if(myBid!==undefined){
+      html+=`<div style="text-align:center;margin:10px;color:#2ecc71;font-size:1.1em">✅ ${myBid} 코인 입찰 완료!</div>`;
+    }else{
+      html+=`<div class="bid-area"><input type="number" id="bidInput" min="0" max="${myCoins}" placeholder="입찰 (0~${myCoins})" inputmode="numeric"><button onclick="placeBid()">입찰!</button></div>`;
+    }
+    html+=`<div style="text-align:center;font-size:0.85em;color:rgba(255,255,255,0.4);margin-top:5px">입찰: ${bidCount}/${aliveIds.length}</div>`;
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('orderList').innerHTML='';
+    document.getElementById('resultArea').style.display='none';
+
+    if(isHost&&bidCount>=aliveIds.length){
+      document.getElementById('btnNext').style.display='';
+      document.getElementById('btnNext').textContent='👁️ 결과 공개';
+    }else{
+      document.getElementById('btnNext').style.display='none';
+    }
+  }else if(phase==='reveal'){
+    document.getElementById('status').textContent=`📊 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
+    const trueValue=item.value;
+
+    let html=`<div class="auction-item">${item.icon}</div>`;
+    html+=`<div class="auction-name">${item.name}</div>`;
+    html+=`<div style="text-align:center;font-size:1.2em;margin:8px">진짜 가치: <b style="color:#f1c40f">${trueValue}</b> 코인</div>`;
+
+    // 결과 계산
+    const results=Object.keys(currentPlayers).map(pid=>{
+      const bid=bids[pid];
+      if(bid===undefined)return{pid,name:getName(pid),bid:'-',diff:999,over:false};
+      const diff=Math.abs(bid-trueValue);
+      const over=bid>trueValue;
+      return{pid,name:getName(pid),bid,diff,over};
+    }).sort((a,b)=>a.diff-b.diff);
+
+    const winner=results.find(r=>r.bid!=='-'&&!r.over)||results.find(r=>r.bid!=='-');
+
+    html+='<div style="margin-top:10px">';
+    results.forEach(r=>{
+      const isWin=winner&&r.pid===winner.pid;
+      const icon=isWin?'🏆':r.over?'💸':'';
+      const color=isWin?'#2ecc71':r.over?'#e74c3c':'#fff';
+      html+=`<div style="color:${color};margin:4px 0;font-size:0.95em">${icon} ${r.name}: ${r.bid}${r.over?' (초과!)':''} (차이: ${r.diff===999?'-':r.diff})</div>`;
+    });
+    html+='</div>';
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('resultArea').style.display='none';
+
+    if(isHost){
+      document.getElementById('btnNext').style.display='';
+      document.getElementById('btnNext').textContent=(round>=TOTAL_ROUNDS)?'🏆 최종결과':'➡️ 다음 물건';
+    }else{
+      document.getElementById('btnNext').style.display='none';
+    }
+  }
+}
+
+async function placeBid(){
+  const input=document.getElementById('bidInput');
+  if(!input)return;
+  const val=parseInt(input.value);
+  if(isNaN(val)||val<0)return;
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.mode!=='auction')return;
+  const myCoins=(d.coins&&d.coins[playerId])||0;
+  if(val>myCoins){SoundEffects.play('wrong');return;}
+  if((d.bids||{})[playerId]!==undefined)return;
+  SoundEffects.play('click');
+  await gameRef.child(`bids/${playerId}`).set(val);
+}
+
+// ════════════════════════════════════════
+// 모드 4: 리버스
+// ════════════════════════════════════════
+let reverseCheckTimer=null;
+let reverseCountdownTimer=null;
+let reverseRoundStart=0;
+let reverseTimeLimit=15;
+
+function renderReverse(d){
+  const phase=d.phase,round=d.round||1,alive=d.alive||{},taps=d.taps||{};
+  const timeLimit=d.timeLimit||15;
+  reverseTimeLimit=timeLimit;
+  reverseRoundStart=d.roundStart||Date.now();
+
+  if(phase==='playing'){
+    const amAlive=alive[playerId];
+    const hasTapped=!!taps[playerId];
+
+    let html=`<div class="reverse-info">🔄 가장 늦게 누르면 생존! 아무도 안 누르면 전원 탈락!</div>`;
+    html+=`<div class="number-display" id="reverseTimer" style="color:#f1c40f">--</div>`;
+    html+=`<button class="tap-btn ${hasTapped?'tapped':''}" onclick="tapReverse()" ${(!amAlive||hasTapped)?'disabled':''}>${!amAlive?'탈락 😢':hasTapped?'✅ 눌렀어!':'눌러!'}</button>`;
+    if(hasTapped)html+=`<div style="text-align:center;color:rgba(255,255,255,0.4);font-size:0.85em;margin-top:5px">다른 사람보다 늦게 눌렀길 바라세요...</div>`;
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('status').textContent=`🔄 라운드 ${round}/${TOTAL_ROUNDS} — 리버스!`;
+    renderTapOrder(taps);
+    document.getElementById('resultArea').style.display='none';
+    document.getElementById('btnNext').style.display='none';
+
+    startReverseCountdown();
+
+    if(isHost&&!reverseCheckTimer){
+      reverseCheckTimer=setInterval(async()=>{
+        const s=await gameRef.once('value');const dd=s.val();
+        if(!dd||dd.phase!=='playing'||dd.mode!=='reverse'){clearInterval(reverseCheckTimer);reverseCheckTimer=null;return;}
+        const el=Math.floor((Date.now()-(dd.roundStart||Date.now()))/1000);
+        if(el>=timeLimit)checkReverseEnd(dd);
+      },500);
+    }
+  }else if(phase==='roundEnd'){
+    stopReverseCountdown();
+    if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
+    document.getElementById('status').textContent=`📊 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
+    document.getElementById('dynamicArea').innerHTML=`<div class="reverse-info">⏰ 시간 종료!</div>`;
+    renderTapOrder(taps);
+    renderEliminated(d.eliminated);
+    showNextBtn(alive,round);
+  }
+}
+
+function startReverseCountdown(){
+  stopReverseCountdown();
+  updateReverseDisplay();
+  reverseCountdownTimer=setInterval(updateReverseDisplay,100);
+}
+
+function updateReverseDisplay(){
+  const el=document.getElementById('reverseTimer');
+  if(!el)return;
+  const elapsed=(Date.now()-reverseRoundStart)/1000;
+  const remain=Math.max(0,reverseTimeLimit-elapsed);
+  const sec=remain.toFixed(1);
+  el.textContent=sec+'초';
+  if(remain<=3)el.style.color='#e74c3c';
+  else if(remain<=7)el.style.color='#f39c12';
+  else el.style.color='#f1c40f';
+  if(remain<=0){
+    el.textContent='0.0초';
+    el.style.color='#e74c3c';
+    stopReverseCountdown();
+  }
+}
+
+function stopReverseCountdown(){
+  if(reverseCountdownTimer){clearInterval(reverseCountdownTimer);reverseCountdownTimer=null;}
+}
+
+async function tapReverse(){
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.mode!=='reverse')return;
+  if(!(d.alive||{})[playerId]||(d.taps||{})[playerId])return;
+  SoundEffects.play('click');
+  const num=(d.currentNum||0)+1;
+  await gameRef.child(`taps/${playerId}`).set({num,time:Date.now(),name:playerName});
+  await gameRef.child('currentNum').set(num);
+}
+
+async function checkReverseEnd(d){
+  const snap=await gameRef.once('value');const fresh=snap.val();
+  if(!fresh||fresh.phase!=='playing')return;
+  if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
+
+  const alive=fresh.alive||{},taps=fresh.taps||{};
+  const aliveIds=Object.keys(alive).filter(p=>alive[p]);
+
+  let elim=[];
+  const tapEntries=Object.entries(taps).filter(([p])=>alive[p]).sort((a,b)=>(a[1].time||0)-(b[1].time||0));
+
+  if(tapEntries.length===0){
+    // 아무도 안 눌렀으면 전원 탈락
+    aliveIds.forEach(p=>elim.push(p));
+  }else{
+    // 가장 먼저 누른 사람 탈락
+    elim.push(tapEntries[0][0]);
+    // 안 누른 사람도 탈락
+    aliveIds.forEach(p=>{if(!taps[p]&&!elim.includes(p))elim.push(p);});
+  }
+
+  elim.forEach(p=>{alive[p]=false;});
+  const scores=fresh.scores||{};
+  Object.keys(alive).filter(p=>alive[p]).forEach(p=>{scores[p]=(scores[p]||0)+10;});
+  SoundEffects.play('eliminate');
+  await gameRef.update({phase:'roundEnd',alive,eliminated:elim,scores});
+}
+
+// ════════════════════════════════════════
+// 모드 5: 폭탄 숫자
+// ════════════════════════════════════════
+function renderBomb(d){
+  const phase=d.phase,round=d.round||1,alive=d.alive||{};
+  const bombs=d.bombs||[];const currentNum=d.currentNum||0;const maxNum=d.maxNum||30;
+  const rawOrder=(d.turnOrder||[]).filter(p=>currentPlayers[p]);
+  const turnIdx=d.turnIdx||0;
+  const aliveOrder=rawOrder.filter(p=>alive[p]);
+  const actualTurn=aliveOrder.length>0?aliveOrder[turnIdx%aliveOrder.length]:'';
+  const history=d.history||{};
+  const comboSafe=d.comboSafe||0;
+
+  Presence.setCurrentHolder(phase==='playing'?actualTurn:null);
+
+  if(phase==='playing'){
+    document.getElementById('status').textContent=`💣 라운드 ${round}/${TOTAL_ROUNDS} — 폭탄을 피해라!`;
+    const isMyTurn=(actualTurn===playerId);
+    const amAlive=alive[playerId];
+    const remaining=maxNum-currentNum;
+
+    const bombsRemaining=bombs.filter(b=>b>currentNum).length;
+
+    let html='';
+
+    const pct=Math.min(100,Math.round((currentNum/maxNum)*100));
+    const barColor=bombsRemaining<=1?'#e74c3c':bombsRemaining<=2?'#f39c12':'#2ecc71';
+    html+=`<div style="max-width:400px;width:100%;margin:8px auto">`;
+    html+=`<div style="width:100%;height:16px;background:rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;position:relative">`;
+    html+=`<div style="width:${pct}%;height:100%;background:${barColor};border-radius:8px;transition:width 0.3s"></div>`;
+    bombs.forEach(b=>{
+      const bpct=Math.round((b/maxNum)*100);
+      if(b<=currentNum){
+        html+=`<div style="position:absolute;left:${bpct}%;top:-2px;transform:translateX(-50%);font-size:0.7em">💥</div>`;
+      }
+    });
+    html+=`</div>`;
+    html+=`<div style="display:flex;justify-content:space-between;font-size:0.75em;color:rgba(255,255,255,0.4);margin-top:2px"><span>0</span><span>${maxNum}</span></div>`;
+    html+=`</div>`;
+
+    html+=`<div style="text-align:center;margin:10px 0">`;
+    html+=`<div style="font-size:4em;font-weight:900;color:#f1c40f">${currentNum}</div>`;
+    html+=`<div style="font-size:0.9em;color:rgba(255,255,255,0.5)">현재 위치 / ${maxNum}</div>`;
+    html+=`</div>`;
+
+    html+=`<div style="display:flex;justify-content:center;gap:15px;margin:8px 0;font-size:0.9em">`;
+    html+=`<span>💣 남은 폭탄: <b style="color:#e74c3c">${bombsRemaining}개</b></span>`;
+    if(comboSafe>=3)html+=`<span>🔥 연속 세이프: <b style="color:#2ecc71">${comboSafe}</b></span>`;
+    html+=`</div>`;
+
+    html+=`<div style="display:flex;gap:6px;justify-content:center;margin:10px 0;flex-wrap:wrap">`;
+    aliveOrder.forEach((pid,i)=>{
+      const isCur=(pid===actualTurn);
+      const color=getColor(pid);
+      html+=`<div style="padding:4px 10px;border-radius:10px;font-size:0.8em;background:${isCur?color:'rgba(255,255,255,0.06)'};border:2px solid ${isCur?'#fff':'transparent'};opacity:${isCur?1:0.5}">${getName(pid)}${isCur?' 🎯':''}</div>`;
+    });
+    html+=`</div>`;
+
+    if(isMyTurn&&amAlive){
+      html+=`<div style="text-align:center;color:#f1c40f;margin:10px 0;font-size:1.1em">⚡ 당신의 차례! 몇 칸 전진?</div>`;
+      html+=`<div class="num-btns" style="max-width:300px;margin:0 auto">`;
+      for(let n=1;n<=3;n++){
+        const nextNum=currentNum+n;
+        if(nextNum>maxNum)continue;
+        const label=`+${n}`;
+        const subtitle=`→ ${nextNum}`;
+        html+=`<div class="num-btn" onclick="stepBomb(${n})" style="width:80px;height:80px;flex-direction:column;display:flex;align-items:center;justify-content:center">`;
+        html+=`<div style="font-size:1.4em;font-weight:bold">${label}</div>`;
+        html+=`<div style="font-size:0.6em;color:rgba(255,255,255,0.5)">${subtitle}</div>`;
+        html+=`</div>`;
+      }
+      html+=`</div>`;
+    }else if(!amAlive){
+      html+=`<div style="text-align:center;color:rgba(255,255,255,0.4);margin:15px">탈락 😢</div>`;
+    }else{
+      html+=`<div style="text-align:center;color:rgba(255,255,255,0.5);margin:15px">${getName(actualTurn)}의 차례... 😬</div>`;
+    }
+
+    const histEntries=Object.values(history).sort((a,b)=>(b.time||0)-(a.time||0));
+    if(histEntries.length>0){
+      html+=`<div style="margin-top:12px;max-width:400px;width:100%;margin-left:auto;margin-right:auto">`;
+      html+=`<div style="font-size:0.8em;color:rgba(255,255,255,0.4);margin-bottom:4px;text-align:center">📜 기록</div>`;
+      histEntries.slice(0,10).forEach(h=>{
+        const color=h.hitBomb?'#e74c3c':'rgba(255,255,255,0.5)';
+        const icon=h.hitBomb?'💥':'✅';
+        html+=`<div style="display:flex;align-items:center;gap:6px;padding:3px 8px;margin:2px 0;border-radius:8px;background:rgba(255,255,255,0.03);font-size:0.8em">`;
+        html+=`<span>${icon}</span>`;
+        html+=`<span style="color:${getColor(h.pid)};font-weight:bold">${h.name||getName(h.pid)}</span>`;
+        html+=`<span style="color:${color}">${h.from}→${h.to}</span>`;
+        if(h.hitBomb)html+=`<span style="color:#e74c3c;font-weight:bold">폭탄!</span>`;
+        html+=`</div>`;
+      });
+      html+=`</div>`;
+    }
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('orderList').innerHTML='';
+    document.getElementById('resultArea').style.display='none';
+    document.getElementById('btnNext').style.display='none';
+  }else if(phase==='roundEnd'){
+    document.getElementById('status').textContent=`📊 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
+    Presence.setCurrentHolder(null);
+
+    let html=`<div style="text-align:center;margin:10px 0">`;
+    html+=`<div style="font-size:1.1em;margin-bottom:8px">💣 폭탄 위치</div>`;
+    html+=`<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:400px;margin:0 auto">`;
+    for(let n=1;n<=maxNum;n++){
+      const isBomb=bombs.includes(n);
+      const wasReached=n<=currentNum;
+      let bg='rgba(255,255,255,0.06)';
+      let border='transparent';
+      let text=n;
+      if(isBomb){bg='rgba(231,76,60,0.25)';border='#e74c3c';text='💣'+n;}
+      else if(wasReached){bg='rgba(46,204,113,0.15)';border='rgba(46,204,113,0.3)';}
+      html+=`<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:${bg};border:1px solid ${border};font-size:${isBomb?'0.55em':'0.7em'}">${text}</div>`;
+    }
+    html+=`</div>`;
+    html+=`</div>`;
+
+    document.getElementById('dynamicArea').innerHTML=html;
+    document.getElementById('orderList').innerHTML='';
+    renderEliminated(d.eliminated);
+    showNextBtn(alive,round);
+  }
+}
+
+async function stepBomb(n){
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.mode!=='bomb')return;
+  const alive=d.alive||{};
+  const rawOrder=(d.turnOrder||[]).filter(p=>currentPlayers[p]);
+  const turnIdx=d.turnIdx||0;
+  const aliveOrder=rawOrder.filter(p=>alive[p]);
+  if(aliveOrder.length===0)return;
+  const actualTurn=aliveOrder[turnIdx%aliveOrder.length];
+  if(actualTurn!==playerId)return;
+
+  const currentNum=d.currentNum||0;
+  const maxNum=d.maxNum||30;
+  const bombs=d.bombs||[];
+  const newNum=Math.min(maxNum,currentNum+n);
+
+  let hitBombNum=null;
+  for(let check=currentNum+1;check<=newNum;check++){
+    if(bombs.includes(check)){hitBombNum=check;break;}
+  }
+  const hitBomb=!!hitBombNum;
+  const actualNewNum=hitBomb?hitBombNum:newNum;
+
+  const histKey='h'+Date.now();
+  const histEntry={
+    pid:playerId,
+    name:playerName,
+    from:currentNum,
+    to:actualNewNum,
+    hitBomb,
+    time:Date.now()
+  };
+
+  if(hitBomb){
+    SoundEffects.play('explode');
+    alive[playerId]=false;
+    const scores=d.scores||{};
+    const elim=[playerId];
+    Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]).forEach(p=>{scores[p]=(scores[p]||0)+10;});
+
+    await gameRef.child(`history/${histKey}`).set(histEntry);
+    await gameRef.update({
+      currentNum:actualNewNum,
+      turnIdx:turnIdx+1,
+      comboSafe:0,
+      phase:'roundEnd',
+      alive,
+      eliminated:elim,
+      scores
+    });
+  }else{
+    SoundEffects.play('correct');
+    const newCombo=(d.comboSafe||0)+1;
+
+    await gameRef.child(`history/${histKey}`).set(histEntry);
+
+    if(actualNewNum>=maxNum){
+      const scores=d.scores||{};
+      Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]).forEach(p=>{
+        scores[p]=(scores[p]||0)+20;
+      });
+      SoundEffects.play('fanfare');
+      await gameRef.update({
+        currentNum:actualNewNum,
+        turnIdx:turnIdx+1,
+        comboSafe:newCombo,
+        phase:'roundEnd',
+        eliminated:[],
+        scores
+      });
+    }else{
+      await gameRef.update({
+        currentNum:actualNewNum,
+        turnIdx:turnIdx+1,
+        comboSafe:newCombo
+      });
+    }
+  }
+}
+
+// ════════════════════════════════════════
+// 공통 유틸
+// ════════════════════════════════════════
+function renderTapOrder(taps){
+  const entries=Object.entries(taps||{}).sort((a,b)=>(a[1].time||0)-(b[1].time||0));
+  let html='';
+  entries.forEach(([pid,info],i)=>{
+    const name=info.name||getName(pid);
+    html+=`<span class="order-chip" style="background:${getColor(pid)}">${i+1}. ${name}</span>`;
+  });
+  document.getElementById('orderList').innerHTML=html;
+}
+
+function renderEliminated(elim){
+  const arr=elim||[];
+  let html='<div class="result-box">';
+  if(arr.length===0)html+='<h3>아무도 탈락하지 않았습니다! 🎉</h3>';
+  else{html+='<h3>💀 탈락!</h3>';arr.forEach(p=>{html+=`<div style="color:#e74c3c;margin:3px 0">${getName(p)}</div>`;});}
+  html+='</div>';
+  document.getElementById('resultArea').innerHTML=html;
+  document.getElementById('resultArea').style.display='';
+}
+
+function showNextBtn(alive,round){
+  if(!isHost){document.getElementById('btnNext').style.display='none';return;}
+  const al=Object.keys(alive||{}).filter(p=>alive[p]);
+  document.getElementById('btnNext').style.display='';
+  document.getElementById('btnNext').textContent=(al.length<=1||round>=TOTAL_ROUNDS)?'🏆 최종결과':'➡️ 다음 라운드';
+}
+
+function renderScores(scores){
+  if(!Object.keys(scores).length){document.getElementById('scoreArea').style.display='none';return;}
+  document.getElementById('scoreArea').style.display='';
+  let html='';Object.keys(currentPlayers).forEach(p=>{
+    html+=`<tr><td>${getName(p)}</td><td>${scores[p]||0}</td></tr>`;
+  });
+  document.getElementById('scoreBody').innerHTML=html;
+}
+
+// ── 다음 라운드 ──
+async function nextRound(){
+  if(!isHost)return;
+  const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
+  const mode=d.mode,phase=d.phase,round=d.round||1,alive=d.alive||{};
+  const aliveIds=Object.keys(alive).filter(p=>alive[p]);
+
+  // 경매 모드: reveal→다음 아이템
+  if(mode==='auction'&&phase==='playing'){
+    // 결과 공개
+    const bids=d.bids||{};const items=d.items||[];const itemIdx=d.itemIdx||0;
+    const item=items[itemIdx];if(!item)return;
+    const trueValue=item.value;
+    const coins=d.coins||{};const scores=d.scores||{};
+
+    // 입찰 결과 계산
+    const results=Object.keys(bids).map(pid=>{
+      const bid=bids[pid];const diff=Math.abs(bid-trueValue);const over=bid>trueValue;
+      return{pid,bid,diff,over};
+    }).sort((a,b)=>a.diff-b.diff);
+
+    const winner=results.find(r=>!r.over)||results[0];
+    results.forEach(r=>{
+      if(r.over){coins[r.pid]=(coins[r.pid]||0)-r.bid;} // 초과입찰 → 코인 차감
+      else if(winner&&r.pid===winner.pid){
+        coins[r.pid]=(coins[r.pid]||0)-r.bid+Math.round(trueValue*1.5); // 획득
+        scores[r.pid]=(scores[r.pid]||0)+20;
+      }
+    });
+
+    SoundEffects.play(winner?'correct':'wrong');
+    await gameRef.update({phase:'reveal',coins,scores});
+    return;
+  }
+
+  if(mode==='auction'&&phase==='reveal'){
+    if(round>=TOTAL_ROUNDS){await gameRef.update({phase:'final'});return;}
+    await gameRef.update({round:round+1,phase:'playing',bids:null,itemIdx:(d.itemIdx||0)+1,roundId:Date.now()});
+    return;
+  }
+
+  // 공통: 최종 결과
+  if(aliveIds.length<=1||round>=TOTAL_ROUNDS){
+    await gameRef.update({phase:'final'});return;
+  }
+
+  // 모드별 다음 라운드 데이터
+  const base={round:round+1,phase:'playing',eliminated:null,roundId:Date.now()};
+
+  if(mode==='classic'){
+    Object.assign(base,{currentNum:0,taps:null});
+  }else if(mode==='target'){
+    stopTargetTurnTimer();
+    const al=Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]);
+    if(al.length<2){await gameRef.update({phase:'final'});return;}
+    const target=al.length*5+Math.floor(Math.random()*al.length*3)+5;
+    Object.assign(base,{
+      target,currentSum:0,picks:null,
+      turnOrder:al,turnIdx:0,lastPicker:null,
+      lapCount:1,turnTimeLimit:10,turnStart:Date.now()
+    });
+  }else if(mode==='reverse'){
+    stopReverseCountdown();
+    if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
+    Object.assign(base,{currentNum:0,taps:null,timeLimit:15,roundStart:Date.now()});
+  }else if(mode==='bomb'){
+    const al=Object.keys(alive).filter(p=>alive[p]&&currentPlayers[p]);
+    if(al.length<2){await gameRef.update({phase:'final'});return;}
+    const maxNum=al.length*8+10;
+    const bombCount=Math.min(5,Math.max(3,al.length+1));
+    const bombs=[];
+    while(bombs.length<bombCount){
+      const n=Math.floor(Math.random()*maxNum)+1;
+      if(!bombs.includes(n))bombs.push(n);
+    }
+    Object.assign(base,{
+      bombs,maxNum,bombCount,
+      currentNum:0,history:null,
+      turnOrder:al,turnIdx:0,comboSafe:0
+    });
+  }
+
+  await gameRef.update(base);
+}
+
+// ── 최종 결과 ──
+function renderFinal(scores, mode){
+  lastGameMode=mode||'classic';
+  if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
+  Presence.setCurrentHolder(null);
+  Presence.setGameEnded();
+  document.getElementById('status').textContent='🎉 게임 종료!';
+  document.getElementById('dynamicArea').innerHTML='';
+  document.getElementById('orderList').innerHTML='';
+  document.getElementById('playersStatus').innerHTML='';
+  document.getElementById('btnNext').style.display='none';
+  document.getElementById('btnBackMain').style.display='none';
+
+  const modeNames={classic:'🔢 클래식',target:'🎯 타겟 넘버',auction:'💰 눈치 경매',reverse:'🔄 리버스',bomb:'💣 폭탄 숫자'};
+
+  const sorted=Object.keys(currentPlayers).map(p=>({name:getName(p),score:scores[p]||0})).sort((a,b)=>b.score-a.score);
+  let html=`<div class="result-box"><h2>🏆 최종 결과</h2><div style="font-size:0.85em;color:rgba(255,255,255,0.5);margin-bottom:8px">${modeNames[mode]||mode}</div>`;
+  sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
+  html+='</div><div id="endBtns"></div>';
+  document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
+  renderEndButtons(document.getElementById('endBtns'));
+  SoundEffects.play('fanfare');
+}
+
+// ── 뒤로가기 ──
+let targetTimeoutChecker=null;
+
+async function backToLobby(){
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
+  stopReverseCountdown();
+  stopTargetTurnTimer();
+  if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
+  Presence.setBackToLobby();
+  Presence.destroy();
+  gameRef.off();
+  const rc=Utils.getRoomCode();
+  if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
+  sessionStorage.setItem('returnToLobby','true');
+  window.location.href='../index.html';
+}
+
+init();
+if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('tense');
+</script>
+</body>
+</html>

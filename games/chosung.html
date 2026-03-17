@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💣 초성 폭탄</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/sound.js"></script>
+<script src="../js/presence.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{font-size:1.6em;margin-bottom:8px}
+.info{background:rgba(255,255,255,0.1);padding:10px 20px;border-radius:12px;margin-bottom:12px;text-align:center;font-size:0.9em;max-width:500px}
+.status{font-size:1.1em;margin:10px 0;text-align:center}
+.chosung{font-size:3.5em;font-weight:bold;text-align:center;margin:15px 0;color:#f39c12;letter-spacing:20px}
+.timer-circle{width:120px;height:120px;border-radius:50%;border:6px solid #2ecc71;display:flex;align-items:center;justify-content:center;font-size:2.5em;font-weight:bold;margin:15px auto}
+.timer-circle.warn{border-color:#f39c12;animation:pulse .5s infinite}
+.timer-circle.danger{border-color:#e74c3c;animation:pulse .3s infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.input-area{display:flex;gap:8px;max-width:400px;width:100%;margin:10px auto}
+.input-area input{flex:1;padding:12px;border-radius:10px;border:2px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.1);color:#fff;font-size:1.1em;text-align:center}
+.input-area button{padding:12px 20px;border:none;border-radius:10px;background:#2ecc71;color:#fff;font-size:1em;cursor:pointer;font-weight:bold}
+.holder{text-align:center;margin:10px 0;font-size:1.2em}
+.answers{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0;max-width:500px}
+.ans-chip{padding:4px 10px;border-radius:15px;font-size:0.8em;background:rgba(255,255,255,0.1)}
+.result-box{background:rgba(231,76,60,0.12);border:2px solid #e74c3c;border-radius:16px;padding:20px;text-align:center;max-width:500px;width:100%;margin:10px 0}
+.scores table{width:100%;border-collapse:collapse;max-width:500px}
+.scores th,.scores td{padding:6px 10px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1)}
+.scores th{color:#f39c12}
+.btn{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold;margin:5px}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-back{background:rgba(255,255,255,0.15);color:#fff}
+.end-buttons{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:15px}
+.end-buttons button{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold;transition:transform 0.15s,box-shadow 0.15s}
+.end-buttons button:hover{transform:translateY(-2px);box-shadow:0 4px 15px rgba(0,0,0,0.3)}
+.btn-retry{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-lobby{background:rgba(255,255,255,0.15);color:#fff}
+.wait-msg{color:rgba(255,255,255,0.5);font-size:0.9em;animation:pulse 1.5s infinite}
+</style>
+</head>
+<body data-bgm="tense">
+<h1>💣 초성 폭탄</h1>
+<div class="info">초성에 맞는 단어를 입력하세요! 시간 안에 못 맞추면 💥 폭발!</div>
+<div class="status" id="status">⏳ 준비 중...</div>
+<div class="chosung" id="chosung"></div>
+<div class="timer-circle" id="timer">10</div>
+<div class="holder" id="holder"></div>
+<div class="input-area" id="inputArea" style="display:none">
+  <input type="text" id="ansInput" placeholder="단어 입력..." maxlength="10">
+  <button onclick="submitAnswer()">제출!</button>
+</div>
+<div class="answers" id="answers"></div>
+<div id="resultArea" style="display:none"></div>
+<div class="scores" id="scoreArea" style="display:none">
+  <h3 style="text-align:center;margin-bottom:5px">📊 점수</h3>
+  <table><thead><tr><th>이름</th><th>점수</th></tr></thead><tbody id="scoreBody"></tbody></table>
+</div>
+<div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+  <button class="btn btn-primary" id="btnNext" style="display:none" onclick="nextRound()">➡️ 다음</button>
+  <button class="btn btn-back" id="btnBackMain" onclick="backToLobby()">🔙 로비로 돌아가기</button>
+</div>
+<div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;">
+  🔊 <input type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵 ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'tense');this.textContent='🎵 OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON/OFF</button>
+</div>
+<script>
+const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
+const gameRef=db.ref(`rooms/${roomCode}/gameData`);
+let isHost=false,currentPlayers={},tickTimer=null;
+const TOTAL_ROUNDS=5;
+const CHOSUNG_SETS=[
+  {cho:'ㄱ ㅂ'},{cho:'ㄴ ㄹ'},{cho:'ㅎ ㄱ'},{cho:'ㅅ ㄱ'},{cho:'ㅈ ㅎ'},
+  {cho:'ㅂ ㅅ'},{cho:'ㅊ ㅁ'},{cho:'ㄷ ㄹ'},{cho:'ㅇ ㅎ'},{cho:'ㅍ ㄹ'},
+  {cho:'ㅁ ㄹ'},{cho:'ㅋ ㅍ'}
+];
+
+function getName(pid){return(currentPlayers[pid]&&currentPlayers[pid].name)||'익명';}
+
+function renderEndButtons(container){
+  let html='<div class="end-buttons">';
+  if(isHost){
+    html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
+    html+='<button class="btn-lobby" onclick="goToGameSelect()">🎮 다른 게임 선택</button>';
+  }else{
+    html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
+  }
+  html+='<button class="btn-lobby" onclick="backToLobby()">🏠 로비로</button>';
+  html+='</div>';
+  container.innerHTML=html;
+}
+
+async function restartGame(){if(!isHost)return;await gameRef.remove();initGame();}
+
+async function goToGameSelect(){
+  if(!isHost)return;
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  Presence.destroy();gameRef.off();if(tickTimer)clearInterval(tickTimer);
+  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
+  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+}
+
+async function autoSkipHolder(holderId) {
+  if(!isHost) return;
+  const snap = await gameRef.once('value');
+  const d = snap.val();
+  if(!d || d.phase!=='playing' || d.holder!==holderId) return;
+  const pids = Object.keys(currentPlayers);
+  const nextIdx = ((d.holderIdx||0)+1) % pids.length;
+  console.log('[Chosung] Auto-skip from', getName(holderId), 'to', getName(pids[nextIdx]));
+  await gameRef.update({holder:pids[nextIdx], holderIdx:nextIdx, startTime:Date.now()});
+}
+
+async function init(){
+  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
+  currentPlayers=snap.val()||{};
+  const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
+  isHost=(hs.val()===playerId);
+
+  Presence.init({
+    roomCode, playerId, playerName,
+    onAutoSkip: isHost ? autoSkipHolder : null
+  });
+
+  document.getElementById('ansInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitAnswer();});
+  gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
+  tickTimer=setInterval(async()=>{
+    const s=await gameRef.once('value');const d=s.val();
+    if(!d||d.phase!=='playing')return;
+    const elapsed=Math.floor((Date.now()-(d.startTime||Date.now()))/1000);
+    const left=Math.max(0,(d.timeLeft||10)-elapsed);
+    const el=document.getElementById('timer');
+    el.textContent=left;
+    el.className='timer-circle'+(left>5?'':left>2?' warn':' danger');
+    if(left<=0&&isHost)explode(d);
+  },500);
+}
+
+function initGame(){
+  const pids=Object.keys(currentPlayers);
+  const qs=[...CHOSUNG_SETS].sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
+  gameRef.set({round:1,phase:'playing',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:Date.now(),roundId:Date.now()});
+}
+
+function render(d){
+  if(!d)return;
+  const phase=d.phase||'playing',round=d.round||1,qs=d.questions||[];
+  if(phase==='final'){renderFinal(d.scores||{});return;}
+  if(round>qs.length){renderFinal(d.scores||{});return;}
+  const q=qs[round-1];if(!q)return;
+  const holder=d.holder||'';
+  document.getElementById('chosung').textContent=q.cho;
+  document.getElementById('holder').innerHTML=`폭탄 소유자: <b style="color:#f39c12">${getName(holder)}</b>`;
+
+  Presence.setCurrentHolder(holder);
+
+  if(phase==='playing'){
+    document.getElementById('status').textContent=`💣 라운드 ${round}/${TOTAL_ROUNDS}`;
+    document.getElementById('inputArea').style.display=(holder===playerId)?'flex':'none';
+    if(holder===playerId)document.getElementById('ansInput').focus();
+    const answers=d.answers||{};
+    let aHtml='';Object.values(answers).forEach(a=>{aHtml+=`<span class="ans-chip">${a.word} (${a.name})</span>`;});
+    document.getElementById('answers').innerHTML=aHtml;
+    document.getElementById('resultArea').style.display='none';
+    document.getElementById('btnNext').style.display='none';
+  }else if(phase==='exploded'){
+    document.getElementById('status').textContent=`💥 라운드 ${round}/${TOTAL_ROUNDS} — 폭발!`;
+    const expName=getName(d.exploded||'');
+    document.getElementById('resultArea').innerHTML=`<div class="result-box"><h2>💥 폭발!</h2><div style="font-size:1.3em;margin:8px 0">${expName}이(가) 폭탄에 맞았습니다!</div></div>`;
+    document.getElementById('resultArea').style.display='';
+    document.getElementById('inputArea').style.display='none';
+    Presence.setCurrentHolder(null);
+    if(isHost){document.getElementById('btnNext').style.display='';document.getElementById('btnNext').textContent=(round>=TOTAL_ROUNDS)?'🏆 최종결과':'➡️ 다음';}
+  }
+  renderScores(d.scores||{});
+}
+
+async function submitAnswer(){
+  const input=document.getElementById('ansInput');
+  const word=(input.value||'').trim();if(!word){return;}input.value='';
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing'||d.holder!==playerId)return;
+  const used=d.usedWords||{};
+  if(used[word]){SoundEffects.play('wrong');return;}
+  const cho=(d.questions[(d.round||1)-1]||{}).cho||'';
+  const target=cho.replace(/\s/g,'');
+  if(!getChosung(word).startsWith(target)){SoundEffects.play('wrong');return;}
+  SoundEffects.play('correct');
+  const pids=Object.keys(currentPlayers);
+  const nextIdx=((d.holderIdx||0)+1)%pids.length;
+  const key='a'+Date.now();
+  await gameRef.child(`answers/${key}`).set({word,pid:playerId,name:playerName});
+  await gameRef.child(`usedWords/${word}`).set(true);
+  await gameRef.update({holder:pids[nextIdx],holderIdx:nextIdx,startTime:Date.now(),timeLeft:Math.max(5,(d.timeLeft||10)-0.5)});
+}
+
+function getChosung(str){
+  const CHO='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'.split('');
+  let r='';for(let i=0;i<str.length;i++){const c=str.charCodeAt(i)-0xAC00;if(c>=0&&c<=11171)r+=CHO[Math.floor(c/588)];}return r;
+}
+
+async function explode(d){
+  const holder=d.holder||'';const scores=d.scores||{};
+  Object.keys(currentPlayers).forEach(p=>{if(p===holder)scores[p]=(scores[p]||0)-5;else scores[p]=(scores[p]||0)+5;});
+  SoundEffects.play('explode');
+  await gameRef.update({phase:'exploded',exploded:holder,scores});
+}
+
+async function nextRound(){
+  if(!isHost)return;const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
+  const round=d.round||1;
+  if(round>=TOTAL_ROUNDS){await gameRef.update({phase:'final'});return;}
+  const pids=Object.keys(currentPlayers);
+  const nextStart=((d.holderIdx||0)+1)%pids.length;
+  await gameRef.update({round:round+1,phase:'playing',holder:pids[nextStart],holderIdx:nextStart,timeLeft:10,exploded:null,startTime:Date.now(),answers:null,usedWords:null,roundId:Date.now()});
+}
+
+function renderScores(scores){
+  if(!Object.keys(scores).length){document.getElementById('scoreArea').style.display='none';return;}
+  document.getElementById('scoreArea').style.display='';
+  let html='';Object.keys(currentPlayers).forEach(p=>{html+=`<tr><td>${getName(p)}</td><td>${scores[p]||0}</td></tr>`;});
+  document.getElementById('scoreBody').innerHTML=html;
+}
+
+function renderFinal(scores){
+  if(tickTimer)clearInterval(tickTimer);
+  Presence.setCurrentHolder(null);
+  Presence.setGameEnded();
+  document.getElementById('status').textContent='🎉 게임 종료!';
+  document.getElementById('chosung').textContent='';document.getElementById('timer').style.display='none';
+  document.getElementById('inputArea').style.display='none';document.getElementById('holder').textContent='';
+  document.getElementById('btnNext').style.display='none';document.getElementById('btnBackMain').style.display='none';
+  const sorted=Object.keys(currentPlayers).map(p=>({name:getName(p),score:scores[p]||0})).sort((a,b)=>b.score-a.score);
+  let html='<div class="result-box" style="border-color:#f39c12;background:rgba(243,156,18,0.1)"><h2>🏆 최종 결과!</h2>';
+  sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
+  html+='</div><div id="endBtns"></div>';
+  document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
+  renderEndButtons(document.getElementById('endBtns'));
+  SoundEffects.play('fanfare');
+}
+
+async function backToLobby(){
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  Presence.setBackToLobby();
+  Presence.destroy();
+  gameRef.off();if(tickTimer)clearInterval(tickTimer);
+  const rc=Utils.getRoomCode();
+  if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
+  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+}
+init();
+if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('tense');
+</script>
+</body>
+</html>

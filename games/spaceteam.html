@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🚀 같이 소리질러!</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/sound.js"></script>
+<script src="../js/presence.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0d0d0d,#1a1a2e);color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{font-size:1.6em;margin-bottom:8px}
+.info{background:rgba(255,255,255,0.1);padding:10px 20px;border-radius:12px;margin-bottom:12px;text-align:center;font-size:0.9em;max-width:500px}
+.status{font-size:1.1em;margin:10px 0;text-align:center}
+
+/* HP 바 */
+.hp-bar{width:100%;max-width:400px;height:30px;background:rgba(255,255,255,0.1);border-radius:15px;overflow:hidden;margin:10px auto}
+.hp-fill{height:100%;background:linear-gradient(90deg,#e74c3c,#f39c12,#2ecc71);transition:width 0.3s;border-radius:15px}
+.hp-text{text-align:center;font-size:0.9em;margin-bottom:6px}
+.mission-count{text-align:center;font-size:1em;color:#f1c40f;margin:5px 0}
+
+/* 난이도 선택 */
+.diff-select{max-width:450px;width:100%;margin:15px auto;text-align:center}
+.diff-select h3{margin-bottom:12px;font-size:1.1em}
+.diff-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.diff-btn{
+  padding:16px 20px;border:3px solid rgba(255,255,255,0.15);border-radius:14px;
+  background:rgba(255,255,255,0.05);color:#fff;font-size:1em;cursor:pointer;
+  transition:all 0.2s;min-width:100px;text-align:center;
+}
+.diff-btn:hover{background:rgba(255,255,255,0.12)}
+.diff-btn.selected{border-color:#f1c40f;background:rgba(241,196,15,0.15)}
+.diff-btn .icon{font-size:1.8em;display:block;margin-bottom:4px}
+.diff-btn .label{font-size:0.85em;color:rgba(255,255,255,0.6)}
+
+/* 명령 박스 */
+.command-box{background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.2);border-radius:14px;padding:20px;text-align:center;max-width:450px;width:100%;margin:10px auto}
+.command-box .who{font-size:0.85em;color:rgba(255,255,255,0.5);margin-bottom:5px}
+.command-box .cmd{font-size:1.3em;font-weight:bold;color:#f1c40f}
+
+/* 타이머 바 */
+.turn-timer{width:100%;max-width:400px;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;margin:8px auto}
+.turn-timer-fill{height:100%;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);border-radius:4px;transition:width 0.1s linear}
+
+/* 버튼 */
+.action-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:15px 0;max-width:500px}
+.act-btn{
+  padding:14px 20px;border:2px solid rgba(255,255,255,0.2);border-radius:12px;
+  background:rgba(255,255,255,0.06);color:#fff;font-size:1em;cursor:pointer;
+  transition:all 0.15s;min-width:110px;text-align:center;
+}
+.act-btn:hover{background:rgba(255,255,255,0.15)}
+.act-btn:active{transform:scale(0.95)}
+.act-btn.correct{border-color:#2ecc71;background:rgba(46,204,113,0.3)}
+.act-btn.wrong{border-color:#e74c3c;background:rgba(231,76,60,0.3)}
+
+/* 셔플 애니메이션 */
+.shuffle-in{animation:shuffleIn 0.25s ease-out}
+@keyframes shuffleIn{from{transform:scale(0.85) rotateY(40deg);opacity:0}to{transform:scale(1) rotateY(0);opacity:1}}
+
+/* 결과 */
+.result-box{background:rgba(102,126,234,0.12);border:2px solid #667eea;border-radius:16px;padding:20px;text-align:center;max-width:500px;width:100%;margin:10px 0}
+.btn{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold;margin:5px}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-back{background:rgba(255,255,255,0.15);color:#fff}
+.end-buttons{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:15px}
+.end-buttons button{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold}
+.end-buttons button:hover{transform:translateY(-2px);box-shadow:0 4px 15px rgba(0,0,0,0.3)}
+.btn-retry{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-lobby2{background:rgba(255,255,255,0.15);color:#fff}
+.wait-msg{color:rgba(255,255,255,0.5);font-size:0.9em}
+</style>
+</head>
+<body data-bgm="race">
+<h1>🚀 같이 소리질러!</h1>
+<div class="info">각자 화면에 나오는 명령을 수행하세요! 버튼이 계속 바뀌니 빠르게 찾으세요!</div>
+<div class="status" id="status">⏳ 로딩 중...</div>
+
+<div class="hp-bar" id="hpBarWrap" style="display:none"><div class="hp-fill" id="hpFill" style="width:100%"></div></div>
+<div class="hp-text" id="hpTextWrap" style="display:none">🚀 우주선 내구도 <span id="hpText">100</span>%</div>
+<div class="mission-count" id="missionCount" style="display:none">미션 0 / 20 완료</div>
+
+<!-- 난이도 선택 (호스트만) -->
+<div class="diff-select" id="diffSelect" style="display:none">
+  <h3>⚙️ 난이도 선택</h3>
+  <div class="diff-btns">
+    <div class="diff-btn selected" data-diff="easy" onclick="selectDiff('easy')">
+      <span class="icon">😊</span>쉬움<span class="label">4개 중 선택<br>셔플 없음<br>타이머 없음</span>
+    </div>
+    <div class="diff-btn" data-diff="normal" onclick="selectDiff('normal')">
+      <span class="icon">😤</span>보통<span class="label">4개 중 선택<br>3초마다 셔플<br>8초 타이머</span>
+    </div>
+    <div class="diff-btn" data-diff="hard" onclick="selectDiff('hard')">
+      <span class="icon">🔥</span>어려움<span class="label">6개 중 선택<br>1.5초 셔플<br>5초 타이머</span>
+    </div>
+    <div class="diff-btn" data-diff="hell" onclick="selectDiff('hell')">
+      <span class="icon">💀</span>지옥<span class="label">8개 중 선택<br>1초 셔플<br>3초 타이머</span>
+    </div>
+  </div>
+  <button class="btn btn-primary" style="margin-top:15px;width:100%;font-size:1.1em;" onclick="hostStart()">🚀 발사!</button>
+</div>
+
+<!-- 게스트 대기 -->
+<div id="guestWait" style="display:none;text-align:center;margin:20px 0;color:rgba(255,255,255,0.5);">
+  방장이 난이도를 선택하고 있습니다...
+</div>
+
+<!-- 명령 -->
+<div class="command-box" id="commandBox" style="display:none">
+  <div class="who" id="cmdWho">명령 대상</div>
+  <div class="cmd" id="cmdText">대기 중...</div>
+</div>
+<div class="turn-timer" id="turnTimerWrap" style="display:none"><div class="turn-timer-fill" id="turnTimerFill" style="width:100%"></div></div>
+<div class="action-btns" id="actionBtns"></div>
+<div id="resultArea" style="display:none"></div>
+
+<div style="margin-top:15px;display:flex;gap:10px;justify-content:center">
+  <button class="btn btn-back" id="btnBackMain" onclick="backToLobby()">🔙 로비로 돌아가기</button>
+</div>
+<div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;">
+  🔊 <input type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵 ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'race');this.textContent='🎵 OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON/OFF</button>
+</div>
+<script>
+const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
+const gameRef=db.ref(`rooms/${roomCode}/gameData`);
+let isHost=false,currentPlayers={};
+
+// ── 상수 ──
+const COLORS=['빨간','파란','초록','노란','보라','주황','하얀','검정','은색','금색','분홍','회색'];
+const PARTS=['버튼','레버','스위치','다이얼','키','패널','안테나','차단기','볼트','코드','센서','밸브'];
+const VERBS=['눌러','당겨','켜','돌려','입력해','열어','올려','내려','조여','연결해','활성화','잠가'];
+const COLOR_HEX={
+  '빨간':'#e74c3c','파란':'#3498db','초록':'#2ecc71','노란':'#f1c40f','보라':'#9b59b6',
+  '주황':'#e67e22','하얀':'#bdc3c7','검정':'#7f8c8d','은색':'#95a5a6','금색':'#f0c040',
+  '분홍':'#fd79a8','회색':'#636e72'
+};
+
+const ALL_ACTIONS=[];
+COLORS.forEach(c=>PARTS.forEach(p=>ALL_ACTIONS.push(c+' '+p)));
+
+const TOTAL_MISSIONS=20;
+
+// 난이도별 설정
+const DIFF_CONFIG={
+  easy:   {btnCount:4, shuffleMs:0,    turnTime:0,  hpDecayMs:3000, hpDecay:1, hpWrong:8,  hpCorrect:5, label:'쉬움'},
+  normal: {btnCount:4, shuffleMs:3000, turnTime:8,  hpDecayMs:2500, hpDecay:2, hpWrong:10, hpCorrect:4, label:'보통'},
+  hard:   {btnCount:6, shuffleMs:1500, turnTime:5,  hpDecayMs:2000, hpDecay:3, hpWrong:12, hpCorrect:3, label:'어려움'},
+  hell:   {btnCount:8, shuffleMs:1000, turnTime:3,  hpDecayMs:1500, hpDecay:4, hpWrong:15, hpCorrect:2, label:'지옥'}
+};
+
+let selectedDiff='easy';
+let config=DIFF_CONFIG.easy;
+
+// 타이머들
+let hpTimer=null, shuffleTimer=null, turnTimer=null, turnStartTime=0;
+let lastRenderedIdx=-1;
+let cooldown=false;
+
+function getName(pid){return(currentPlayers[pid]&&currentPlayers[pid].name)||'익명';}
+
+function renderEndButtons(container){
+  let html='<div class="end-buttons">';
+  if(isHost){
+    html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
+    html+='<button class="btn-lobby2" onclick="goToGameSelect()">🎮 다른 게임 선택</button>';
+  }else{
+    html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
+  }
+  html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
+  html+='</div>';
+  container.innerHTML=html;
+}
+
+async function restartGame(){if(!isHost)return;await gameRef.remove();}
+
+async function goToGameSelect(){
+  if(!isHost)return;
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  stopAllTimers();Presence.destroy();gameRef.off();
+  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
+  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+}
+
+function makeActionKey(cIdx,pIdx){return COLORS[cIdx]+' '+PARTS[pIdx];}
+function makeCommandText(cIdx,pIdx){return COLORS[cIdx]+' '+PARTS[pIdx]+'를 '+VERBS[pIdx]+'!';}
+
+// ── 난이도 선택 ──
+function selectDiff(diff){
+  selectedDiff=diff;
+  document.querySelectorAll('.diff-btn').forEach(b=>{
+    b.classList.toggle('selected',b.dataset.diff===diff);
+  });
+}
+
+// ── 호스트 시작 ──
+async function hostStart(){
+  if(!isHost)return;
+  config=DIFF_CONFIG[selectedDiff];
+  const pids=Object.keys(currentPlayers);
+  const cmds=generateCommands(pids);
+  await gameRef.set({
+    phase:'playing',
+    difficulty:selectedDiff,
+    hp:100,
+    completed:0,
+    total:TOTAL_MISSIONS,
+    commands:cmds,
+    cmdIdx:0,
+    turnStart:Date.now(),
+    roundId:Date.now()
+  });
+}
+
+function generateCommands(pids){
+  const cmds=[];
+  for(let i=0;i<TOTAL_MISSIONS;i++){
+    const target=pids[i%pids.length]; // 순서대로 돌아가며
+    const cIdx=Math.floor(Math.random()*COLORS.length);
+    const pIdx=Math.floor(Math.random()*PARTS.length);
+    const actionKey=makeActionKey(cIdx,pIdx);
+    const cmdText=makeCommandText(cIdx,pIdx);
+
+    // 오답 버튼들
+    const wrongSet=new Set();
+    while(wrongSet.size<(config.btnCount-1)){
+      const wc=Math.floor(Math.random()*COLORS.length);
+      const wp=Math.floor(Math.random()*PARTS.length);
+      const wKey=makeActionKey(wc,wp);
+      if(wKey!==actionKey)wrongSet.add(wKey);
+    }
+    const buttons=[actionKey,...wrongSet];
+    // 셔플
+    for(let j=buttons.length-1;j>0;j--){const k=Math.floor(Math.random()*(j+1));[buttons[j],buttons[k]]=[buttons[k],buttons[j]];}
+
+    cmds.push({target,cmd:cmdText,correct:actionKey,buttons});
+  }
+  return cmds;
+}
+
+// ── 자동 스킵 ──
+async function autoSkipHolder(holderId){
+  if(!isHost)return;
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing')return;
+  const cmds=d.commands||[];const idx=d.cmdIdx||0;
+  if(idx>=cmds.length)return;
+  if(cmds[idx].target!==holderId)return;
+  console.log('[Spaceteam] Auto-skip for',getName(holderId));
+  const newHp=Math.max(0,(d.hp||0)-config.hpWrong);
+  if(newHp<=0){await gameRef.update({hp:0,phase:'gameover'});SoundEffects.play('explode');}
+  else{await gameRef.update({cmdIdx:idx+1,completed:(d.completed||0),hp:newHp,turnStart:Date.now()});}
+}
+
+// ── 초기화 ──
+async function init(){
+  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
+  currentPlayers=snap.val()||{};
+  const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
+  isHost=(hs.val()===playerId);
+
+  Presence.init({roomCode,playerId,playerName,onAutoSkip:isHost?autoSkipHolder:null});
+
+  gameRef.on('value',s=>{
+    const d=s.val();
+    if(!d){
+      // 게임 데이터 없음 → 난이도 선택 대기
+      showDiffSelect();
+      return;
+    }
+    render(d);
+  });
+}
+
+function showDiffSelect(){
+  document.getElementById('diffSelect').style.display=isHost?'':'none';
+  document.getElementById('guestWait').style.display=isHost?'none':'';
+  document.getElementById('commandBox').style.display='none';
+  document.getElementById('actionBtns').innerHTML='';
+  document.getElementById('hpBarWrap').style.display='none';
+  document.getElementById('hpTextWrap').style.display='none';
+  document.getElementById('missionCount').style.display='none';
+  document.getElementById('turnTimerWrap').style.display='none';
+  document.getElementById('resultArea').style.display='none';
+  document.getElementById('status').textContent='⚙️ 난이도를 선택하세요';
+}
+
+// ── 렌더링 ──
+function render(d){
+  if(!d)return;
+  const phase=d.phase||'playing';
+  const diff=d.difficulty||'easy';
+  config=DIFF_CONFIG[diff]||DIFF_CONFIG.easy;
+  const hp=d.hp||0;
+  const completed=d.completed||0;
+
+  // 난이도 선택 UI 숨기기
+  document.getElementById('diffSelect').style.display='none';
+  document.getElementById('guestWait').style.display='none';
+
+  // HP 바
+  document.getElementById('hpBarWrap').style.display='';
+  document.getElementById('hpTextWrap').style.display='';
+  document.getElementById('hpFill').style.width=hp+'%';
+  document.getElementById('hpText').textContent=hp;
+  document.getElementById('missionCount').style.display='';
+  document.getElementById('missionCount').textContent=`미션 ${completed} / ${TOTAL_MISSIONS} 완료 (${config.label})`;
+
+  // ── 게임 끝 ──
+  if(phase==='victory'){
+    stopAllTimers();
+    Presence.setCurrentHolder(null);
+    Presence.setGameEnded();
+    document.getElementById('status').textContent='🎉 임무 성공!';
+    document.getElementById('commandBox').style.display='none';
+    document.getElementById('actionBtns').innerHTML='';
+    document.getElementById('turnTimerWrap').style.display='none';
+    document.getElementById('btnBackMain').style.display='none';
+    document.getElementById('resultArea').innerHTML='<div class="result-box" style="border-color:#2ecc71;background:rgba(46,204,113,0.1)"><h2>🎉 우주선 생존!</h2><div>모든 미션을 완료했습니다!</div></div><div id="endBtns"></div>';
+    document.getElementById('resultArea').style.display='';
+    renderEndButtons(document.getElementById('endBtns'));
+    SoundEffects.play('fanfare');
+    return;
+  }
+  if(phase==='gameover'){
+    stopAllTimers();
+    Presence.setCurrentHolder(null);
+    Presence.setGameEnded();
+    document.getElementById('status').textContent='💥 임무 실패!';
+    document.getElementById('commandBox').style.display='none';
+    document.getElementById('actionBtns').innerHTML='';
+    document.getElementById('turnTimerWrap').style.display='none';
+    document.getElementById('btnBackMain').style.display='none';
+    document.getElementById('resultArea').innerHTML='<div class="result-box"><h2>💥 우주선 파괴!</h2><div>내구도가 0이 되었습니다...</div></div><div id="endBtns"></div>';
+    document.getElementById('resultArea').style.display='';
+    renderEndButtons(document.getElementById('endBtns'));
+    SoundEffects.play('explode');
+    return;
+  }
+
+  // ── playing ──
+  document.getElementById('resultArea').style.display='none';
+  const cmds=d.commands||[];
+  const idx=d.cmdIdx||0;
+  if(idx>=cmds.length||idx>=TOTAL_MISSIONS){
+    if(isHost&&d.phase==='playing'){
+      gameRef.update({phase:'victory'});
+    }
+    return;
+  }
+  const curr=cmds[idx];if(!curr)return;
+  const isMyCmd=(curr.target===playerId);
+
+  Presence.setCurrentHolder(curr.target);
+
+  document.getElementById('status').textContent=`🚀 우주선에 탑승 중... (HP: ${hp}%)`;
+  document.getElementById('cmdWho').textContent=isMyCmd?'⚡ 당신의 차례!':'📡 '+getName(curr.target)+'에게 보내는 명령';
+  document.getElementById('cmdText').textContent=curr.cmd;
+  document.getElementById('commandBox').style.display='';
+
+  // 턴 타이머 표시
+  if(config.turnTime>0){
+    document.getElementById('turnTimerWrap').style.display='';
+    startTurnTimerUI(d.turnStart||Date.now(), config.turnTime);
+  }else{
+    document.getElementById('turnTimerWrap').style.display='none';
+  }
+
+  // 버튼 그리기 (cmdIdx 바뀔 때만)
+  if(isMyCmd){
+    if(lastRenderedIdx!==idx){
+      lastRenderedIdx=idx;
+      renderButtons(curr, false);
+      startShuffleTimer(curr);
+    }
+  }else{
+    lastRenderedIdx=-1;
+    stopShuffleTimer();
+    document.getElementById('actionBtns').innerHTML='<div style="color:rgba(255,255,255,0.5);padding:15px">📡 '+getName(curr.target)+'의 차례입니다... 명령을 외쳐주세요!</div>';
+  }
+
+  // HP 감소 타이머 (호스트)
+  startHpTimer();
+
+  // 턴 타임아웃 (호스트)
+  startTurnTimeout(d, curr);
+}
+
+// ── 버튼 렌더 ──
+function renderButtons(curr, isReshuffle){
+  const correct=curr.correct;
+  let buttons=[...curr.buttons];
+
+  if(isReshuffle){
+    // 정답은 유지하고 오답만 새로 뽑기
+    buttons=[correct];
+    const wrongSet=new Set();
+    while(wrongSet.size<(config.btnCount-1)){
+      const action=ALL_ACTIONS[Math.floor(Math.random()*ALL_ACTIONS.length)];
+      if(action!==correct)wrongSet.add(action);
+    }
+    buttons.push(...wrongSet);
+    // 셔플
+    for(let j=buttons.length-1;j>0;j--){const k=Math.floor(Math.random()*(j+1));[buttons[j],buttons[k]]=[buttons[k],buttons[j]];}
+  }
+
+  let html='';
+  const cols=config.btnCount<=4?2:config.btnCount<=6?3:4;
+  buttons.forEach(action=>{
+    const parts=action.split(' ');
+    const colorName=parts[0];
+    const hex=COLOR_HEX[colorName]||'#ccc';
+    const escaped=action.replace(/'/g,"\\'");
+    html+=`<button class="act-btn shuffle-in" onclick="doAction('${escaped}')" style="border-color:${hex}40;color:${hex};flex-basis:calc(${100/cols}% - 8px)">${action}</button>`;
+  });
+  document.getElementById('actionBtns').innerHTML=html;
+}
+
+// ── 셔플 타이머 ──
+function startShuffleTimer(curr){
+  stopShuffleTimer();
+  if(!config.shuffleMs||config.shuffleMs<=0)return;
+  shuffleTimer=setInterval(()=>{
+    if(!curr)return;
+    renderButtons(curr, true);
+  }, config.shuffleMs);
+}
+function stopShuffleTimer(){
+  if(shuffleTimer){clearInterval(shuffleTimer);shuffleTimer=null;}
+}
+
+// ── 턴 타이머 UI ──
+let turnTimerRAF=null;
+function startTurnTimerUI(startTime, maxSec){
+  if(turnTimerRAF)cancelAnimationFrame(turnTimerRAF);
+  const fill=document.getElementById('turnTimerFill');
+  function tick(){
+    const elapsed=(Date.now()-startTime)/1000;
+    const pct=Math.max(0,100-((elapsed/maxSec)*100));
+    fill.style.width=pct+'%';
+    if(pct>0) turnTimerRAF=requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// ── 턴 타임아웃 (호스트) ──
+let turnTimeoutId=null;
+function startTurnTimeout(d, curr){
+  if(!isHost||!config.turnTime)return;
+  if(turnTimeoutId)clearTimeout(turnTimeoutId);
+  const elapsed=Date.now()-(d.turnStart||Date.now());
+  const remain=Math.max(0, config.turnTime*1000-elapsed);
+  turnTimeoutId=setTimeout(async()=>{
+    const snap=await gameRef.once('value');const fresh=snap.val();
+    if(!fresh||fresh.phase!=='playing')return;
+    const fIdx=fresh.cmdIdx||0;
+    if(fIdx!==(d.cmdIdx||0))return; // 이미 넘어감
+    // 타임아웃 → HP 감소 + 다음
+    const newHp=Math.max(0,(fresh.hp||0)-config.hpWrong);
+    if(newHp<=0){
+      await gameRef.update({hp:0,phase:'gameover'});SoundEffects.play('explode');
+    }else{
+      await gameRef.update({cmdIdx:fIdx+1,hp:newHp,turnStart:Date.now()});
+    }
+  }, remain);
+}
+
+// ── HP 감소 (호스트) ──
+let hpTimerStarted=false;
+function startHpTimer(){
+  if(hpTimerStarted||!isHost)return;
+  hpTimerStarted=true;
+  hpTimer=setInterval(async()=>{
+    const snap=await gameRef.once('value');const d=snap.val();
+    if(!d||d.phase!=='playing'){
+      clearInterval(hpTimer);hpTimer=null;hpTimerStarted=false;return;
+    }
+    if((d.completed||0)>=TOTAL_MISSIONS){
+      clearInterval(hpTimer);hpTimer=null;hpTimerStarted=false;return;
+    }
+    const newHp=Math.max(0,(d.hp||0)-config.hpDecay);
+    if(newHp<=0){
+      await gameRef.update({hp:0,phase:'gameover'});SoundEffects.play('explode');
+      clearInterval(hpTimer);hpTimerStarted=false;
+    }else{
+      await gameRef.child('hp').set(newHp);
+    }
+  }, config.hpDecayMs);
+}
+
+// ── 모든 타이머 정지 ──
+function stopAllTimers(){
+  stopShuffleTimer();
+  if(hpTimer){clearInterval(hpTimer);hpTimer=null;}
+  hpTimerStarted=false;
+  if(turnTimeoutId){clearTimeout(turnTimeoutId);turnTimeoutId=null;}
+  if(turnTimerRAF){cancelAnimationFrame(turnTimerRAF);turnTimerRAF=null;}
+}
+
+// ── 버튼 클릭 ──
+async function doAction(action){
+  if(cooldown)return;
+  const snap=await gameRef.once('value');const d=snap.val();
+  if(!d||d.phase!=='playing')return;
+  const cmds=d.commands||[];const idx=d.cmdIdx||0;
+  if(idx>=cmds.length)return;
+  const curr=cmds[idx];
+  if(curr.target!==playerId)return;
+
+  const clicked=action.trim();
+  const answer=curr.correct.trim();
+
+  if(clicked===answer){
+    // 정답
+    cooldown=true;
+    SoundEffects.play('correct');
+    document.querySelectorAll('.act-btn').forEach(b=>{if(b.textContent.trim()===clicked)b.classList.add('correct');});
+    stopShuffleTimer();
+    if(turnTimeoutId){clearTimeout(turnTimeoutId);turnTimeoutId=null;}
+
+    const newCompleted=(d.completed||0)+1;
+    const newHp=Math.min(100,(d.hp||0)+config.hpCorrect);
+    lastRenderedIdx=-1;
+
+    if(newCompleted>=TOTAL_MISSIONS){
+      stopAllTimers();
+      await gameRef.update({completed:newCompleted,hp:newHp,phase:'victory',cmdIdx:idx});
+    }else{
+      await gameRef.update({cmdIdx:idx+1,completed:newCompleted,hp:newHp,turnStart:Date.now()});
+    }
+    setTimeout(()=>{cooldown=false;},250);
+  }else{
+    // 오답
+    SoundEffects.play('wrong');
+    cooldown=true;
+    document.querySelectorAll('.act-btn').forEach(b=>{if(b.textContent.trim()===clicked)b.classList.add('wrong');});
+
+    const newHp=Math.max(0,(d.hp||0)-config.hpWrong);
+    if(newHp<=0){
+      await gameRef.update({hp:0,phase:'gameover'});SoundEffects.play('explode');
+    }else{
+      await gameRef.child('hp').set(newHp);
+    }
+    setTimeout(()=>{
+      document.querySelectorAll('.act-btn').forEach(b=>b.classList.remove('wrong'));
+      cooldown=false;
+    },400);
+  }
+}
+
+// ── 뒤로가기 ──
+async function backToLobby(){
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  stopAllTimers();
+  Presence.setBackToLobby();
+  Presence.destroy();
+  gameRef.off();
+  const rc=Utils.getRoomCode();
+  if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
+  sessionStorage.setItem('returnToLobby','true');
+  window.location.href='../index.html';
+}
+
+init();
+if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('race');
+</script>
+</body>
+</html>

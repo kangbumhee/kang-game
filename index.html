@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎉 워크샵 파티게임</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/sound.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',sans-serif;
+  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  color:#fff;min-height:100vh;
+  position:relative;overflow-x:hidden;
+}
+
+/* ═══ 김포지회 화이팅 배경 텍스트 ═══ */
+body::before{
+  content:'김포지회 화이팅! 🔥';
+  position:fixed;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%) rotate(-15deg);
+  font-size:6em;
+  font-weight:900;
+  color:rgba(255,255,255,0.025);
+  white-space:nowrap;
+  pointer-events:none;
+  z-index:0;
+  letter-spacing:10px;
+  text-shadow:0 0 80px rgba(102,126,234,0.05);
+}
+body::after{
+  content:'김포지회 화이팅! 💪 김포지회 화이팅! 🎉 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪';
+  position:fixed;
+  top:0;left:0;
+  width:300%;
+  font-size:1.8em;
+  font-weight:bold;
+  color:rgba(255,255,255,0.018);
+  white-space:nowrap;
+  pointer-events:none;
+  z-index:0;
+  animation:scrollBg 40s linear infinite;
+  letter-spacing:30px;
+}
+@keyframes scrollBg{
+  0%{transform:translateX(0) translateY(0)}
+  100%{transform:translateX(-33.33%) translateY(0)}
+}
+
+/* 배경 반복 패턴 */
+.bg-pattern{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  pointer-events:none;z-index:0;overflow:hidden;
+}
+.bg-line{
+  position:absolute;white-space:nowrap;
+  font-size:1.3em;font-weight:bold;
+  color:rgba(255,255,255,0.015);
+  letter-spacing:20px;
+  animation:driftLine 60s linear infinite;
+}
+.bg-line:nth-child(1){top:15%;left:-10%;animation-duration:55s}
+.bg-line:nth-child(2){top:35%;left:-20%;animation-duration:65s;animation-delay:-10s}
+.bg-line:nth-child(3){top:55%;left:-15%;animation-duration:50s;animation-delay:-20s}
+.bg-line:nth-child(4){top:75%;left:-25%;animation-duration:70s;animation-delay:-30s}
+.bg-line:nth-child(5){top:90%;left:-5%;animation-duration:58s;animation-delay:-15s}
+@keyframes driftLine{
+  0%{transform:translateX(0)}
+  100%{transform:translateX(-50%)}
+}
+
+/* ═══ 메인 컨텐츠 ═══ */
+h1{text-align:center;font-size:2em;margin:30px 0 5px;position:relative;z-index:1}
+h2{text-align:center;font-size:1.5em;margin:20px 0 10px;position:relative;z-index:1}
+h3{text-align:center;position:relative;z-index:1}
+.card{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:16px;position:relative;z-index:1}
+.btn{padding:14px 28px;border:none;border-radius:12px;font-size:1.1em;cursor:pointer;font-weight:bold;transition:all 0.2s}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-secondary{background:rgba(255,255,255,0.15);color:#fff}
+.btn-danger{background:linear-gradient(135deg,#e74c3c,#c0392b);color:#fff}
+.player-chip{display:inline-block;padding:6px 14px;border-radius:20px;color:#fff;font-size:0.9em;font-weight:500;transition:opacity 0.3s}
+.game-card{transition:all 0.2s;border:2px solid transparent}
+.game-card:hover{border-color:rgba(255,255,255,0.3);transform:translateY(-2px)}
+.game-card.selected{border-color:#667eea;background:rgba(102,126,234,0.2)!important}
+.game-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:15px}
+.vol-ctrl{position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;display:flex;align-items:center;gap:6px}
+.legend{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:0.75em;color:rgba(255,255,255,0.5);position:relative;z-index:1}
+
+/* ═══ 크레딧 뱃지 ═══ */
+.credit-badge{
+  text-align:center;
+  margin:5px 0 15px;
+  position:relative;z-index:1;
+}
+.credit-badge .made-by{
+  display:inline-block;
+  padding:6px 18px;
+  border-radius:20px;
+  background:linear-gradient(135deg,rgba(102,126,234,0.2),rgba(118,75,162,0.2));
+  border:1px solid rgba(102,126,234,0.3);
+  font-size:0.8em;
+  color:rgba(255,255,255,0.7);
+  letter-spacing:1px;
+}
+.credit-badge .made-by .author{
+  font-weight:bold;
+  background:linear-gradient(135deg,#667eea,#f093fb);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.credit-badge .gimpo{
+  display:block;
+  margin-top:4px;
+  font-size:0.7em;
+  color:rgba(255,255,255,0.35);
+  letter-spacing:2px;
+}
+
+/* ═══ 로비 크레딧 (하단) ═══ */
+.lobby-credit{
+  text-align:center;
+  margin:15px 0 5px;
+  position:relative;z-index:1;
+}
+.lobby-credit .badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 20px;border-radius:25px;
+  background:linear-gradient(135deg,rgba(241,196,15,0.1),rgba(243,156,18,0.1));
+  border:1px solid rgba(241,196,15,0.2);
+  font-size:0.8em;color:rgba(255,255,255,0.6);
+}
+.lobby-credit .badge .name{
+  font-weight:bold;color:#f1c40f;
+}
+.lobby-credit .sub{
+  display:block;margin-top:4px;
+  font-size:0.7em;color:rgba(255,255,255,0.25);
+  letter-spacing:3px;
+}
+
+/* ═══ 김포지회 배너 ═══ */
+.gimpo-banner{
+  text-align:center;
+  margin:10px 0;
+  position:relative;z-index:1;
+}
+.gimpo-banner .inner{
+  display:inline-block;
+  padding:10px 24px;
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(231,76,60,0.08),rgba(241,196,15,0.08));
+  border:1px dashed rgba(241,196,15,0.2);
+}
+.gimpo-banner .text{
+  font-size:1.1em;
+  font-weight:bold;
+  background:linear-gradient(90deg,#e74c3c,#f39c12,#f1c40f,#2ecc71,#3498db,#9b59b6);
+  background-size:200% auto;
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  animation:rainbowText 3s linear infinite;
+}
+@keyframes rainbowText{
+  0%{background-position:0% center}
+  100%{background-position:200% center}
+}
+.gimpo-banner .sub{
+  font-size:0.75em;
+  color:rgba(255,255,255,0.3);
+  margin-top:3px;
+}
+</style>
+</head>
+<body>
+
+<!-- 배경 김포지회 화이팅 반복 텍스트 -->
+<div class="bg-pattern">
+  <div class="bg-line">김포지회 화이팅! 💪 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪 김포지회 화이팅! 🔥</div>
+  <div class="bg-line">🎉 김포지회 최고! 🎉 김포지회 최고! 🎉 김포지회 최고! 🎉 김포지회 최고! 🎉 김포지회 최고! 🎉 김포지회 최고! 🎉 김포지회 최고! 🎉 김포지회 최고!</div>
+  <div class="bg-line">김포지회 화이팅! 💪 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪 김포지회 화이팅! 🔥</div>
+  <div class="bg-line">🏆 김포지회 파이팅! 🏆 김포지회 파이팅! 🏆 김포지회 파이팅! 🏆 김포지회 파이팅! 🏆 김포지회 파이팅! 🏆 김포지회 파이팅! 🏆 김포지회 파이팅!</div>
+  <div class="bg-line">김포지회 화이팅! 💪 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪 김포지회 화이팅! 🔥 김포지회 화이팅! ⭐ 김포지회 화이팅! 💪 김포지회 화이팅! 🔥</div>
+</div>
+
+<!-- ═══ 랜딩 ═══ -->
+<div id="landing">
+  <h1>🎉 워크샵 파티게임</h1>
+
+  <!-- 제작자 크레딧 -->
+  <div class="credit-badge">
+    <div class="made-by">🎮 Made by <span class="author">뷰티강</span> 🎮</div>
+    <span class="gimpo">김포지회 화이팅! 💪</span>
+  </div>
+
+  <div class="card" style="max-width:400px;margin:0 auto 15px;padding:30px;">
+    <input type="text" id="playerName" placeholder="이름 입력" maxlength="8"
+      style="width:100%;padding:12px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font-size:1.1em;margin-bottom:15px;text-align:center;">
+    <button class="btn btn-primary" onclick="Lobby.createRoom()" style="width:100%;margin-bottom:10px;">🏠 새 방 만들기</button>
+    <div style="display:flex;gap:10px;">
+      <input type="text" id="roomCodeInput" placeholder="방 번호 (3자리)" maxlength="3" inputmode="numeric" pattern="[0-9]*"
+        style="flex:1;padding:12px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:#fff;font-size:1.1em;text-align:center;">
+      <button class="btn btn-secondary" onclick="Lobby.joinRoom()">참가하기</button>
+    </div>
+  </div>
+
+  <!-- 김포지회 배너 -->
+  <div class="gimpo-banner">
+    <div class="inner">
+      <div class="text">🔥 김포지회 화이팅! 🔥</div>
+      <div class="sub">함께하면 더 즐거운 워크샵 🎉</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 대기실 ═══ -->
+<div id="waiting" style="display:none;max-width:600px;margin:0 auto;padding:20px;position:relative;z-index:1;">
+  <h2>🏠 대기실</h2>
+  <div style="text-align:center;margin:10px 0;">
+    <span style="font-size:0.9em;color:rgba(255,255,255,0.6);">방 코드:</span>
+    <span id="roomCodeDisplay" style="font-size:2em;font-weight:bold;letter-spacing:6px;color:#f1c40f;"></span>
+  </div>
+  <div id="playerList" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:15px 0;"></div>
+
+  <!-- 상태 범례 -->
+  <div class="legend">
+    <span>🎮 게임 중</span>
+    <span>✅ 게임 종료</span>
+    <span>📱 자리비움</span>
+    <span>💤 오프라인</span>
+  </div>
+
+  <!-- 호스트 전용: 게임 선택 + 시작 -->
+  <div id="hostControls" style="display:none;">
+    <h3 style="margin:20px 0 10px;">🎮 게임 선택</h3>
+    <div class="game-grid">
+      <div class="game-card card" data-game="majority" onclick="Lobby.selectGame('majority')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">⚖️</div><div>다수결 살아남기</div>
+      </div>
+      <div class="game-card card" data-game="nunchi" onclick="Lobby.selectGame('nunchi')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">👀</div><div>눈치게임</div>
+      </div>
+      <div class="game-card card" data-game="chosung" onclick="Lobby.selectGame('chosung')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">💣</div><div>초성 폭탄</div>
+      </div>
+      <div class="game-card card" data-game="telepathy" onclick="Lobby.selectGame('telepathy')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">🧠</div><div>숫자 텔레파시</div>
+      </div>
+      <div class="game-card card" data-game="spectrum" onclick="Lobby.selectGame('spectrum')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">🌈</div><div>스펙트럼</div>
+      </div>
+      <div class="game-card card" data-game="horserace" onclick="Lobby.selectGame('horserace')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">🏇</div><div>경마게임</div>
+      </div>
+      <div class="game-card card" data-game="hotpotato" onclick="Lobby.selectGame('hotpotato')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">🔥</div><div>폭탄 돌리기</div>
+      </div>
+      <div class="game-card card" data-game="spaceteam" onclick="Lobby.selectGame('spaceteam')" style="padding:15px;cursor:pointer;text-align:center;">
+        <div style="font-size:2em;">🚀</div><div>같이 소리질러!</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="Lobby.startGame()" style="width:100%;font-size:1.2em;">🎮 게임 시작!</button>
+  </div>
+
+  <!-- 게스트 메시지 -->
+  <div id="guestMsg" style="display:none;text-align:center;margin-top:20px;color:rgba(255,255,255,0.6);font-size:0.95em;">
+    호스트가 게임을 시작하면 자동으로 이동합니다...
+  </div>
+
+  <!-- 공통: 방 나가기 버튼 -->
+  <div style="text-align:center;margin-top:20px;">
+    <button class="btn btn-danger" onclick="Lobby.leaveRoom()" style="font-size:0.95em;padding:10px 24px;">🚪 방 나가기</button>
+  </div>
+
+  <!-- 로비 하단 크레딧 -->
+  <div class="lobby-credit">
+    <div class="badge">🎮 <span class="name">뷰티강</span>이 만든 게임</div>
+    <span class="sub">🔥 김포지회 화이팅 🔥</span>
+  </div>
+</div>
+
+<!-- 볼륨 컨트롤 -->
+<div class="vol-ctrl" id="volCtrl" style="display:none;">
+  🔊 <input type="range" id="volSlider" min="0" max="100" value="50" style="width:80px;vertical-align:middle;"
+    oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <button onclick="toggleBGM()" id="bgmBtn" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON</button>
+</div>
+
+<script>
+let bgmOn = false;
+function toggleBGM() {
+  if (typeof SoundEffects.startBGM !== 'function') return;
+  if (!bgmOn) { SoundEffects.startBGM('lobby'); bgmOn = true; document.getElementById('bgmBtn').textContent = '🎵 OFF'; }
+  else { SoundEffects.stopBGM(); bgmOn = false; document.getElementById('bgmBtn').textContent = '🎵 ON'; }
+}
+document.addEventListener('click', () => { if (SoundEffects.getCtx) SoundEffects.getCtx(); }, { once: true });
+</script>
+<script src="js/lobby.js"></script>
+</body>
+</html>

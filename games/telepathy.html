@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧠 숫자 텔레파시</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/sound.js"></script>
+<script src="../js/presence.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{font-size:1.6em;margin-bottom:8px}
+.info{background:rgba(255,255,255,0.1);padding:10px 20px;border-radius:12px;margin-bottom:12px;text-align:center;font-size:0.9em;max-width:500px}
+.status{font-size:1.1em;margin:10px 0;text-align:center}
+.prompt{font-size:1.2em;text-align:center;margin:10px 0;font-weight:bold;color:#f1c40f}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;max-width:350px;margin:15px auto}
+.num{padding:15px;border:3px solid rgba(255,255,255,0.2);border-radius:12px;background:rgba(255,255,255,0.08);color:#fff;font-size:1.3em;cursor:pointer;text-align:center;transition:all 0.2s}
+.num:hover{background:rgba(255,255,255,0.2)}
+.num.sel{border-color:#667eea;background:rgba(102,126,234,0.3)}
+.num.match{border-color:#2ecc71;background:rgba(46,204,113,0.3)}
+.num.miss{border-color:#e74c3c;background:rgba(231,76,60,0.2)}
+.num.locked{pointer-events:none}
+.result-box{background:rgba(102,126,234,0.12);border:2px solid #667eea;border-radius:16px;padding:20px;text-align:center;max-width:500px;width:100%;margin:10px 0}
+.btn{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold;margin:5px}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-back{background:rgba(255,255,255,0.15);color:#fff}
+.end-buttons{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:15px}
+.end-buttons button{padding:12px 24px;border:none;border-radius:12px;font-size:1em;cursor:pointer;font-weight:bold}
+.end-buttons button:hover{transform:translateY(-2px);box-shadow:0 4px 15px rgba(0,0,0,0.3)}
+.btn-retry{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-lobby2{background:rgba(255,255,255,0.15);color:#fff}
+.wait-msg{color:rgba(255,255,255,0.5);font-size:0.9em}
+</style>
+</head>
+<body data-bgm="chill">
+<h1>🧠 숫자 텔레파시</h1>
+<div class="info">1 ~ 10 중에서 고르세요! 다수가 고를 숫자를 예측하세요!</div>
+<div class="status" id="status">⏳ 로딩 중...</div>
+<div class="prompt" id="prompt"></div>
+<div class="grid" id="grid"></div>
+<div id="resultArea" style="display:none"></div>
+<div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+  <button class="btn btn-primary" id="btnNext" style="display:none" onclick="nextRound()">➡️ 다음</button>
+  <button class="btn btn-back" id="btnBackMain" onclick="backToLobby()">🔙 로비로 돌아가기</button>
+</div>
+<div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;">
+  🔊 <input type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵 ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'chill');this.textContent='🎵 OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON/OFF</button>
+</div>
+<script>
+const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
+const gameRef=db.ref(`rooms/${roomCode}/gameData`);
+let isHost=false,currentPlayers={};
+const TOTAL_ROUNDS=5;
+const PROMPTS=["다수가 고를 숫자를 예측하세요!","가장 인기 있을 숫자는?","모두의 마음이 통할 숫자!","직감으로 골라보세요!","텔레파시를 보내세요!"];
+
+function getName(pid){return(currentPlayers[pid]&&currentPlayers[pid].name)||'익명';}
+
+function renderEndButtons(container){
+  let html='<div class="end-buttons">';
+  if(isHost){
+    html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
+    html+='<button class="btn-lobby2" onclick="goToGameSelect()">🎮 다른 게임 선택</button>';
+  }else{
+    html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
+  }
+  html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
+  html+='</div>';
+  container.innerHTML=html;
+}
+
+async function restartGame(){if(!isHost)return;await gameRef.remove();initGame();}
+
+async function goToGameSelect(){
+  if(!isHost)return;
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  Presence.destroy();gameRef.off();
+  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
+  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+}
+
+async function init(){
+  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
+  currentPlayers=snap.val()||{};
+  const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
+  isHost=(hs.val()===playerId);
+  Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
+  gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
+}
+
+function initGame(){
+  gameRef.set({round:1,phase:'choosing',picks:null,scores:{},prompts:PROMPTS.sort(()=>Math.random()-0.5),roundId:Date.now()});
+}
+
+function render(d){
+  if(!d)return;
+  const phase=d.phase||'choosing',round=d.round||1,picks=d.picks||{},scores=d.scores||{},prompts=d.prompts||PROMPTS;
+  if(phase==='final'){renderFinal(scores);return;}
+  document.getElementById('prompt').textContent=prompts[(round-1)%prompts.length]||'숫자를 고르세요!';
+
+  if(phase==='choosing'){
+    const pc=Object.keys(picks).length,tc=Object.keys(currentPlayers).length;
+    document.getElementById('status').textContent=`🤔 라운드 ${round}/${TOTAL_ROUNDS} — 선택 중 (${pc}/${tc})`;
+    const myP=picks[playerId];
+    let html='';
+    for(let n=1;n<=10;n++){
+      let cls='num';if(myP===n)cls+=' sel';if(myP)cls+=' locked';
+      html+=`<div class="${cls}" onclick="pick(${n})">${n}</div>`;
+    }
+    document.getElementById('grid').innerHTML=html;
+    document.getElementById('resultArea').style.display='none';
+    document.getElementById('btnNext').style.display=(isHost&&pc>=tc)?'':'none';
+    if(isHost&&pc>=tc)document.getElementById('btnNext').textContent='👁️ 결과 공개';
+  }else if(phase==='reveal'){
+    document.getElementById('status').textContent=`📊 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
+    let counts={};for(let n=1;n<=10;n++)counts[n]=0;
+    Object.values(picks).forEach(n=>{counts[n]=(counts[n]||0)+1;});
+    const maxC=Math.max(...Object.values(counts),0);
+    const majNums=[];for(let n=1;n<=10;n++){if(counts[n]===maxC&&maxC>0)majNums.push(n);}
+    let html='';const myP=picks[playerId];
+    for(let n=1;n<=10;n++){
+      let cls='num locked';
+      if(counts[n]===maxC&&maxC>0)cls+=' match';
+      else if(myP===n)cls+=' miss';
+      html+=`<div class="${cls}">${n}<div style="font-size:0.6em;margin-top:2px">${counts[n]}명</div></div>`;
+    }
+    document.getElementById('grid').innerHTML=html;
+
+    let rHtml='<div class="result-box"><h3>📊 결과</h3>';
+    rHtml+=`<div style="font-size:1.3em;margin:8px 0;color:#f1c40f">최다: ${majNums.join(', ')} (${maxC}명)</div>`;
+    Object.keys(currentPlayers).forEach(p=>{
+      const v=picks[p];const ok=majNums.includes(v);
+      rHtml+=`<div style="color:${ok?'#2ecc71':'#e74c3c'};margin:3px 0">${ok?'✅':'❌'} ${getName(p)}: ${v||'-'}</div>`;
+    });
+    rHtml+='</div>';document.getElementById('resultArea').innerHTML=rHtml;document.getElementById('resultArea').style.display='';
+    if(isHost){document.getElementById('btnNext').style.display='';document.getElementById('btnNext').textContent=(round>=TOTAL_ROUNDS)?'🏆 최종결과':'➡️ 다음';}
+    else document.getElementById('btnNext').style.display='none';
+  }
+}
+
+function pick(n){
+  gameRef.child('picks').child(playerId).once('value').then(s=>{
+    if(s.val()!==null)return;
+    SoundEffects.play('click');
+    gameRef.child(`picks/${playerId}`).set(n);
+  });
+}
+
+async function nextRound(){
+  if(!isHost)return;
+  const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
+  const phase=d.phase,round=d.round||1,picks=d.picks||{},scores=d.scores||{};
+  if(phase==='choosing'){
+    let counts={};for(let n=1;n<=10;n++)counts[n]=0;
+    Object.values(picks).forEach(n=>{counts[n]=(counts[n]||0)+1;});
+    const maxC=Math.max(...Object.values(counts),0);
+    const majNums=[];for(let n=1;n<=10;n++){if(counts[n]===maxC&&maxC>0)majNums.push(n);}
+    Object.keys(picks).forEach(p=>{if(majNums.includes(picks[p]))scores[p]=(scores[p]||0)+10;});
+    SoundEffects.play('correct');
+    await gameRef.update({phase:'reveal',scores});
+  }else if(phase==='reveal'){
+    if(round>=TOTAL_ROUNDS){await gameRef.update({phase:'final'});return;}
+    await gameRef.update({round:round+1,phase:'choosing',picks:null,roundId:Date.now()});
+  }
+}
+
+function renderFinal(scores){
+  Presence.setGameEnded();
+  document.getElementById('status').textContent='🎉 게임 종료!';
+  document.getElementById('prompt').textContent='';document.getElementById('grid').innerHTML='';
+  document.getElementById('btnNext').style.display='none';document.getElementById('btnBackMain').style.display='none';
+  const sorted=Object.keys(currentPlayers).map(p=>({name:getName(p),score:scores[p]||0})).sort((a,b)=>b.score-a.score);
+  let html='<div class="result-box"><h2>🏆 최종 결과!</h2>';
+  sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
+  html+='</div><div id="endBtns"></div>';
+  document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
+  renderEndButtons(document.getElementById('endBtns'));
+  SoundEffects.play('fanfare');
+}
+
+async function backToLobby(){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();Presence.setBackToLobby();Presence.destroy();gameRef.off();const rc=Utils.getRoomCode();if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';}
+init();
+if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('chill');
+</script>
+</body>
+</html>
