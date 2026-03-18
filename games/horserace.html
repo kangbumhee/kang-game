@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',sans-serif;background:linear-gradient(180deg,#1a3a1a 0%,#0d1b0d 100%);color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:10px;overflow-x:hidden}
@@ -184,21 +185,6 @@ h1{font-size:1.5em;margin-bottom:6px;text-shadow:0 2px 8px rgba(0,0,0,0.5)}
 @keyframes wmPulse{0%,100%{opacity:1}50%{opacity:0.5}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 
-/* 카운트다운 오버레이 */
-.cd-overlay{
-  position:fixed;top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,0,0.8);z-index:100;
-  display:flex;align-items:center;justify-content:center;
-  flex-direction:column;
-}
-.cd-overlay .cd-num{
-  font-size:8em;font-weight:900;color:#f1c40f;
-  text-shadow:0 0 40px rgba(241,196,15,0.5);
-  animation:cdPop 0.5s ease-out;
-}
-.cd-overlay .cd-text{font-size:1.2em;color:rgba(255,255,255,0.6);margin-top:10px}
-@keyframes cdPop{0%{transform:scale(2);opacity:0}60%{transform:scale(0.9)}100%{transform:scale(1);opacity:1}}
-
 /* 스크롤 트랙 잔디 */
 .grass-top,.grass-bottom{
   height:8px;
@@ -234,11 +220,10 @@ h1{font-size:1.5em;margin-bottom:6px;text-shadow:0 2px 8px rgba(0,0,0,0.5)}
   <button class="btn btn-primary" id="btnNext" style="display:none" onclick="nextRound()">➡️ 다음</button>
   <button class="btn btn-back" id="btnBackMain" onclick="backToLobby()">🔙 로비로</button>
 </div>
-<div id="cdOverlay" style="display:none"></div>
 
-<div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;">
-  🔊 <input type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
-  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵 ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('race');this.textContent='🎵 OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON/OFF</button>
+<div style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:6px 12px;border-radius:20px;font-size:0.8em;color:#fff;z-index:99999;display:flex;align-items:center;gap:6px;">
+  🔊 <input type="range" min="0" max="100" value="50" style="width:70px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'race');this.textContent='🎵OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:0.8em;">🎵ON/OFF</button>
 </div>
 
 <script>
@@ -263,21 +248,31 @@ function renderEndButtons(container){
   if(isHost){
     html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
     html+='<button class="btn-mode" onclick="showModeSelectFromEnd()">🎮 다른 모드 선택</button>';
+    html+='<button class="btn-lobby2" onclick="goToGameSelect()">🏠 다른 게임 선택</button>';
   }else{
     html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
   }
   html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
   html+='</div>';
-  container.innerHTML+=html;
+  container.innerHTML=html;
 }
 async function restartGame(){if(!isHost)return;await gameRef.remove();hostStart();}
 async function showModeSelectFromEnd(){
   if(!isHost)return;
+  if(raceTimer){clearInterval(raceTimer);raceTimer=null;}
+  stopGallopSound();
+  if(typeof stopBoostCountdown==='function')stopBoostCountdown();
+  await gameRef.remove();
+}
+async function goToGameSelect(){
+  if(!isHost)return;
   if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
   if(raceTimer){clearInterval(raceTimer);raceTimer=null;}
-  stopGallopSound();stopBoostCountdown();
+  stopGallopSound();
+  if(typeof stopBoostCountdown==='function')stopBoostCountdown();
   Presence.setBackToLobby();Presence.destroy();gameRef.off();
   await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
+  await new Promise(function(r){setTimeout(r,300);});
   await db.ref(`rooms/${roomCode}/currentGame`).remove();
   await db.ref(`rooms/${roomCode}/gameData`).remove();
   sessionStorage.setItem('returnToLobby','true');
@@ -377,25 +372,39 @@ function renderTrack(horses, mode, isRacing){
   document.getElementById('liveRank').innerHTML=rankHtml;
 }
 
-// ═══ 카운트다운 ═══
-function showCountdown(cb){
-  const overlay=document.getElementById('cdOverlay');
-  overlay.style.display='flex';
-  overlay.className='cd-overlay';
-  let count=3;
+// ═══ 카운트다운 (전체 동기화) ═══
+function triggerCountdown(subtitle,cb){
+  if(!isHost)return;
+  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
+  showCountdownUI(subtitle,cb);
+}
+function showCountdownUI(subtitle,cb){
+  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
+  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
+  document.body.appendChild(overlay);
+  var steps=['3','2','1','GO!'],i=0;
   function tick(){
-    if(count>0){
-      overlay.innerHTML=`<div class="cd-num">${count}</div><div class="cd-text">경주 시작까지...</div>`;
-      if(typeof SoundEffects.play==='function')SoundEffects.play('countdown');
-      count--;
-      setTimeout(tick,800);
-    }else{
-      overlay.innerHTML=`<div class="cd-num" style="color:#2ecc71">GO!</div>`;
-      if(typeof SoundEffects.play==='function')SoundEffects.play('go');
-      setTimeout(()=>{overlay.style.display='none';cb();},600);
-    }
+    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
+    var txt=steps[i];overlay.innerHTML='';
+    var el=document.createElement('div');el.textContent=txt;
+    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
+    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
+    overlay.appendChild(el);
+    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
+    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
+    i++;setTimeout(tick,800);
   }
   tick();
+}
+var _lastCountdownId=null;
+function listenCountdown(){
+  gameRef.child('countdown').on('value',function(snap){
+    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
+    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
+    showCountdownUI(cd.subtitle||'게임 시작!',null);
+  });
 }
 
 // ═══ 갤럽 사운드 ═══
@@ -415,21 +424,26 @@ async function hostStart(){
 
   if(selectedMode==='classic'){
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,color:HORSE_COLORS[i]});
-    await gameRef.set({mode:'classic',round:1,phase:'betting',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
+    await gameRef.set({mode:'classic',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
+    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'betting'});});
   }else if(selectedMode==='boost'){
     const horses=[];pids.forEach((pid,i)=>{horses.push({name:getName(pid),pos:0,pid,color:HORSE_COLORS[i%HORSE_COLORS.length]});});
-    await gameRef.set({mode:'boost',round:1,phase:'racing',horses,taps:{},scores:{},winner:-1,raceStart:Date.now(),roundId:Date.now()});
+    await gameRef.set({mode:'boost',round:1,phase:'countdown',horses,taps:{},scores:{},winner:-1,raceStart:null,roundId:Date.now()});
+    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'racing',raceStart:Date.now()});startGallopSound();});
   }else if(selectedMode==='quiz'){
     const horses=[];pids.forEach((pid,i)=>{horses.push({name:getName(pid),pos:0,pid,color:HORSE_COLORS[i%HORSE_COLORS.length]});});
     const quizzes=[...QUIZ_POOL].sort(()=>Math.random()-0.5).slice(0,15);
-    await gameRef.set({mode:'quiz',round:1,phase:'question',horses,quizzes,qIdx:0,answers:null,scores:{},winner:-1,roundId:Date.now()});
+    await gameRef.set({mode:'quiz',round:1,phase:'countdown',horses,quizzes,qIdx:0,answers:null,scores:{},winner:-1,roundId:Date.now()});
+    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'question'});});
   }else if(selectedMode==='obstacle'){
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,color:HORSE_COLORS[i]});
-    await gameRef.set({mode:'obstacle',round:1,phase:'betting',horses,bets:null,scores:{},winner:-1,event:null,turnNum:0,roundId:Date.now()});
+    await gameRef.set({mode:'obstacle',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,event:null,turnNum:0,roundId:Date.now()});
+    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'betting'});});
   }else if(selectedMode==='odds'){
     const oddsArr=[1.5,2,3,4,6,10].sort(()=>Math.random()-0.5).slice(0,n);
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,odds:oddsArr[i],color:HORSE_COLORS[i]});
-    await gameRef.set({mode:'odds',round:1,phase:'betting',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
+    await gameRef.set({mode:'odds',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
+    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'betting'});});
   }
 }
 
@@ -439,13 +453,24 @@ async function init(){
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');isHost=(hs.val()===playerId);
   Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
   gameRef.on('value',s=>{const d=s.val();if(!d){showModeSelect();return;}render(d);});
+  listenCountdown();
   db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
     if(!snap.val())return;
+    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
     if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
     if(raceTimer){clearInterval(raceTimer);raceTimer=null;}
     stopGallopSound();stopBoostCountdown();
     Presence.destroy();gameRef.off();
     sessionStorage.setItem('returnToLobby','true');
+    window.location.href='../index.html';
+  });
+  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
+    if(!snap.val())return;
+    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+    Presence.destroy();gameRef.off();
+    sessionStorage.removeItem('roomCode');
+    sessionStorage.removeItem('returnToLobby');
+    alert('방장이 방을 나갔습니다.');
     window.location.href='../index.html';
   });
 }
@@ -467,6 +492,15 @@ function showModeSelect(){
 // ═══ 메인 렌더 ═══
 function render(d){
   if(!d)return;
+  if((d.phase||'')==='countdown'){
+    document.getElementById('status').textContent='⏳ 준비 중...';
+    document.getElementById('modeSelect').style.display='none';
+    document.getElementById('guestWait').style.display='none';
+    document.getElementById('raceContainer').style.display='none';
+    document.getElementById('gameArea').style.display='none';
+    document.getElementById('resultArea').style.display='none';
+    return;
+  }
   document.getElementById('modeSelect').style.display='none';
   document.getElementById('guestWait').style.display='none';
   document.getElementById('gameArea').style.display='';
@@ -520,13 +554,13 @@ async function startRace(){
   if(!isHost)return;const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
   const mode=d.mode;
   if(mode==='classic'||mode==='odds'){
-    showCountdown(()=>{
+    triggerCountdown('경주 시작!',function(){
       gameRef.update({phase:'racing'});
       startGallopSound();
       runAutoRace(d);
     });
   }else if(mode==='obstacle'){
-    showCountdown(()=>{
+    triggerCountdown('경주 시작!',function(){
       gameRef.update({phase:'racing'});
       startGallopSound();
       runObstacleRace(d);

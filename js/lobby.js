@@ -5,6 +5,7 @@ const Lobby = {
   selectedGame: null,
   isHost: false,
   listeners: [],
+  staleCheckTimer: null,
 
   init() {
     this.playerId = Utils.getPlayerId();
@@ -17,9 +18,11 @@ const Lobby = {
         db.ref(`rooms/${saved}/currentGame`).remove();
         db.ref(`rooms/${saved}/gameData`).remove();
         db.ref(`rooms/${saved}/backToLobby`).remove();
+        db.ref(`rooms/${saved}/countdown`).remove();
         db.ref(`rooms/${saved}/players/${this.playerId}`).update({
           location: 'lobby',
-          status: 'online'
+          status: 'online',
+          lastSeen: firebase.database.ServerValue.TIMESTAMP
         });
       }
     }
@@ -29,6 +32,24 @@ const Lobby = {
       this.playerName = name;
       this.enterWaitingRoom();
     }
+
+    // ── 브라우저/탭 종료 시 offline 처리 ──
+    window.addEventListener('beforeunload', () => {
+      if (this.roomCode && this.playerId) {
+        // sendBeacon으로 확실히 전송
+        const url = `${db.ref().toString()}/rooms/${this.roomCode}/players/${this.playerId}.json`;
+        const data = JSON.stringify({ status: 'offline', lastSeen: { '.sv': 'timestamp' } });
+        navigator.sendBeacon(url + '?x-http-method-override=PATCH', data);
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      if (this.roomCode && this.playerId) {
+        db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).update({
+          status: 'offline'
+        }).catch(() => {});
+      }
+    });
   },
 
   async createRoom() {
@@ -42,12 +63,19 @@ const Lobby = {
     Utils.setRoomCode(this.roomCode);
     this.isHost = true;
 
-    await db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).set({
+    const playerRef = db.ref(`rooms/${this.roomCode}/players/${this.playerId}`);
+    await playerRef.set({
       name: this.playerName, online: true, isHost: true,
       joinedAt: Utils.serverTimestamp(),
+      lastSeen: Utils.serverTimestamp(),
       status: 'online',
       location: 'lobby'
     });
+
+    // ── Firebase onDisconnect: 오프라인 시 status를 offline으로 ──
+    playerRef.child('status').onDisconnect().set('offline');
+    playerRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+
     await db.ref(`rooms/${this.roomCode}/host`).set(this.playerId);
     this.enterWaitingRoom();
   },
@@ -67,12 +95,19 @@ const Lobby = {
     this.roomCode = code;
     Utils.setRoomCode(code);
 
-    await db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).set({
+    const playerRef = db.ref(`rooms/${this.roomCode}/players/${this.playerId}`);
+    await playerRef.set({
       name: this.playerName, online: true, isHost: false,
       joinedAt: Utils.serverTimestamp(),
+      lastSeen: Utils.serverTimestamp(),
       status: 'online',
       location: 'lobby'
     });
+
+    // ── Firebase onDisconnect ──
+    playerRef.child('status').onDisconnect().set('offline');
+    playerRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+
     this.enterWaitingRoom();
   },
 
@@ -83,10 +118,15 @@ const Lobby = {
     document.getElementById('volCtrl').style.display = 'flex';
 
     if (this.roomCode && this.playerId) {
-      db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).update({
+      const playerRef = db.ref(`rooms/${this.roomCode}/players/${this.playerId}`);
+      playerRef.update({
         location: 'lobby',
-        status: 'online'
+        status: 'online',
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
       });
+      // onDisconnect 재설정 (로비 복귀 시)
+      playerRef.child('status').onDisconnect().set('offline');
+      playerRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
     }
 
     db.ref(`rooms/${this.roomCode}/host`).once('value').then(snap => {
@@ -95,11 +135,20 @@ const Lobby = {
       document.getElementById('guestMsg').style.display = this.isHost ? 'none' : '';
     });
 
+    // ── 플레이어 목록 렌더링 (강퇴 기능 포함) ──
     const plRef = db.ref(`rooms/${this.roomCode}/players`);
     plRef.on('value', snap => {
       const players = snap.val() || {};
       const list = document.getElementById('playerList');
       list.innerHTML = '';
+
+      // 내가 강퇴당했는지 확인
+      if (this.playerId && !players[this.playerId]) {
+        // 내가 목록에 없음 = 강퇴당함
+        this._handleKicked();
+        return;
+      }
+
       Object.keys(players).forEach((pid, idx) => {
         const p = players[pid];
         if (!p) return;
@@ -130,12 +179,19 @@ const Lobby = {
           statusStyle = 'opacity:0.4;';
         }
 
-        div.style.cssText = `background:${bgColor};${statusStyle}position:relative;`;
+        div.style.cssText = `background:${bgColor};${statusStyle}position:relative;cursor:${this.isHost && pid !== this.playerId ? 'pointer' : 'default'};`;
         div.textContent = (p.name || '익명') + (p.isHost ? ' 👑' : '') + locationIcon;
 
         const locationText = location === 'game' ? '게임 중' : location === 'gameEnd' ? '게임 종료 화면' : '대기실';
         const statusText = status === 'online' ? '접속 중' : status === 'away' ? '자리비움' : '오프라인';
         div.title = `${statusText} | ${locationText}`;
+
+        // ── 방장 클릭 시 강퇴 ──
+        if (this.isHost && pid !== this.playerId) {
+          div.addEventListener('click', () => {
+            this.kickPlayer(pid, p.name || '익명');
+          });
+        }
 
         list.appendChild(div);
       });
@@ -150,6 +206,102 @@ const Lobby = {
       }
     });
     this.listeners.push(cgRef);
+
+    // ── 방 해산 감지 ──
+    const disbandRef = db.ref(`rooms/${this.roomCode}/disbanded`);
+    disbandRef.on('value', snap => {
+      if (!snap.val()) return;
+      if (this.isHost) return;
+      this.listeners.forEach(ref => ref.off());
+      this.listeners = [];
+      this._stopStaleCheck();
+      sessionStorage.removeItem('roomCode');
+      sessionStorage.removeItem('returnToLobby');
+      this.roomCode = null;
+      this.selectedGame = null;
+      this.isHost = false;
+      document.getElementById('waiting').style.display = 'none';
+      document.getElementById('landing').style.display = '';
+      document.getElementById('volCtrl').style.display = 'none';
+      alert('방장이 방을 나갔습니다.');
+    });
+    this.listeners.push(disbandRef);
+
+    // ── 오프라인 플레이어 자동 제거 (방장만, 30초 이상 오프라인) ──
+    this._startStaleCheck();
+  },
+
+  // ═══ 강퇴 기능 ═══
+  async kickPlayer(pid, name) {
+    if (!this.isHost) return;
+    const ok = confirm(`"${name}" 님을 강퇴하시겠습니까?`);
+    if (!ok) return;
+
+    // 강퇴 대상에게 알림 전송
+    await db.ref(`rooms/${this.roomCode}/kicked/${pid}`).set({
+      name: name,
+      kickedAt: Utils.serverTimestamp()
+    });
+
+    // 플레이어 목록에서 제거
+    await db.ref(`rooms/${this.roomCode}/players/${pid}`).remove();
+  },
+
+  // ═══ 강퇴당했을 때 처리 ═══
+  _handleKicked() {
+    this.listeners.forEach(ref => ref.off());
+    this.listeners = [];
+    this._stopStaleCheck();
+
+    sessionStorage.removeItem('roomCode');
+    sessionStorage.removeItem('returnToLobby');
+
+    this.roomCode = null;
+    this.selectedGame = null;
+    this.isHost = false;
+
+    document.getElementById('waiting').style.display = 'none';
+    document.getElementById('landing').style.display = '';
+    document.getElementById('volCtrl').style.display = 'none';
+
+    alert('방장에 의해 강퇴되었습니다.');
+  },
+
+  // ═══ 오프라인 플레이어 자동 제거 (방장만) ═══
+  _startStaleCheck() {
+    this._stopStaleCheck();
+    if (!this.isHost) return;
+
+    this.staleCheckTimer = setInterval(async () => {
+      if (!this.roomCode || !this.isHost) return;
+
+      const snap = await db.ref(`rooms/${this.roomCode}/players`).once('value');
+      const players = snap.val() || {};
+      const now = Date.now();
+
+      Object.keys(players).forEach(async (pid) => {
+        if (pid === this.playerId) return; // 자기 자신은 스킵
+        const p = players[pid];
+        if (!p) return;
+
+        const lastSeen = p.lastSeen || 0;
+        const status = p.status || 'offline';
+        const elapsed = now - lastSeen;
+
+        // 60초 이상 오프라인이면 자동 제거
+        if (status === 'offline' && elapsed > 60000) {
+          console.log(`[Lobby] Auto-removing stale player: ${p.name} (offline ${Math.round(elapsed/1000)}s)`);
+          await db.ref(`rooms/${this.roomCode}/players/${pid}`).remove();
+        }
+      });
+    }, 15000); // 15초마다 체크
+  },
+
+  _stopStaleCheck() {
+    if (this.staleCheckTimer) {
+      clearInterval(this.staleCheckTimer);
+      this.staleCheckTimer = null;
+    }
   },
 
   selectGame(gameId) {
@@ -163,6 +315,10 @@ const Lobby = {
   async startGame() {
     if (!this.isHost || !this.selectedGame) { alert('게임을 선택하세요!'); return; }
     await db.ref(`rooms/${this.roomCode}/gameData`).remove();
+    await db.ref(`rooms/${this.roomCode}/backToLobby`).remove();
+    await db.ref(`rooms/${this.roomCode}/kicked`).remove();
+    await db.ref(`rooms/${this.roomCode}/currentGame`).remove();
+    await new Promise(r => setTimeout(r, 500));
     await db.ref(`rooms/${this.roomCode}/currentGame`).set({
       gameId: this.selectedGame, started: true, startedAt: Utils.serverTimestamp()
     });
@@ -171,6 +327,7 @@ const Lobby = {
   loadGame(gameId) {
     this.listeners.forEach(ref => ref.off());
     this.listeners = [];
+    this._stopStaleCheck();
 
     if (this.roomCode && this.playerId) {
       db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).update({
@@ -194,12 +351,15 @@ const Lobby = {
   async leaveRoom() {
     this.listeners.forEach(ref => ref.off());
     this.listeners = [];
+    this._stopStaleCheck();
 
     if (this.roomCode && this.playerId) {
-      await db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).remove();
-
       if (this.isHost) {
+        await db.ref(`rooms/${this.roomCode}/disbanded`).set(Date.now());
+        await new Promise(r => setTimeout(r, 500));
         await db.ref(`rooms/${this.roomCode}`).remove();
+      } else {
+        await db.ref(`rooms/${this.roomCode}/players/${this.playerId}`).remove();
       }
     }
 

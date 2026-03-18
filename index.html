@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/sound.js"></script>
+<link rel="stylesheet" href="css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{
@@ -87,8 +88,16 @@ h3{text-align:center;position:relative;z-index:1}
 .game-card{transition:all 0.2s;border:2px solid transparent}
 .game-card:hover{border-color:rgba(255,255,255,0.3);transform:translateY(-2px)}
 .game-card.selected{border-color:#667eea;background:rgba(102,126,234,0.2)!important}
+
+/* 강퇴 가능한 플레이어칩 호버 효과 */
+.player-chip[style*="cursor:pointer"]:hover {
+  filter: brightness(1.2);
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.5);
+}
+.player-chip[style*="cursor:pointer"]:hover::after {
+  content: ' ❌';
+}
 .game-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:15px}
-.vol-ctrl{position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:10px;font-size:0.8em;color:#fff;z-index:999;display:flex;align-items:center;gap:6px}
 .legend{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:0.75em;color:rgba(255,255,255,0.5);position:relative;z-index:1}
 
 /* ═══ 크레딧 뱃지 ═══ */
@@ -177,6 +186,14 @@ h3{text-align:center;position:relative;z-index:1}
 </style>
 </head>
 <body>
+
+<!-- 볼륨 컨트롤 - 최상단 왼쪽 고정 -->
+<div class="vol-ctrl" id="volCtrl" style="display:none;bottom:auto;right:auto;top:8px;left:8px;">
+  <span class="vol-icon">🔊</span>
+  <input type="range" id="vol-slider" min="0" max="100" value="50" oninput="SoundEffects.setMasterVolume(this.value/100)">
+  <span id="vol-value">50%</span>
+  <button type="button" id="bgmBtn" onclick="toggleBGM()" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON</button>
+</div>
 
 <!-- 배경 김포지회 화이팅 반복 텍스트 -->
 <div class="bg-pattern">
@@ -283,13 +300,6 @@ h3{text-align:center;position:relative;z-index:1}
   </div>
 </div>
 
-<!-- 볼륨 컨트롤 -->
-<div class="vol-ctrl" id="volCtrl" style="display:none;">
-  🔊 <input type="range" id="volSlider" min="0" max="100" value="50" style="width:80px;vertical-align:middle;"
-    oninput="SoundEffects.setMasterVolume(this.value/100)">
-  <button onclick="toggleBGM()" id="bgmBtn" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;">🎵 ON</button>
-</div>
-
 <script>
 let bgmOn = false;
 function toggleBGM() {
@@ -298,6 +308,38 @@ function toggleBGM() {
   else { SoundEffects.stopBGM(); bgmOn = false; document.getElementById('bgmBtn').textContent = '🎵 ON'; }
 }
 document.addEventListener('click', () => { if (SoundEffects.getCtx) SoundEffects.getCtx(); }, { once: true });
+
+(function() {
+  var volSlider = document.getElementById('vol-slider');
+  var volValue = document.getElementById('vol-value');
+  var volIcon = document.querySelector('.vol-ctrl .vol-icon');
+  if (volSlider && volValue) {
+    volSlider.addEventListener('input', function(e) {
+      var v = e.target.value;
+      volValue.textContent = v + '%';
+      if (volIcon) volIcon.textContent = v == 0 ? '🔇' : v < 30 ? '🔈' : v < 70 ? '🔉' : '🔊';
+      if (typeof SoundEffects !== 'undefined' && typeof SoundEffects.setMasterVolume === 'function') SoundEffects.setMasterVolume(v / 100);
+    });
+  }
+  if (volIcon && volSlider) {
+    var prevVol = 50;
+    volIcon.addEventListener('click', function() {
+      var val = parseInt(volSlider.value, 10);
+      if (val > 0) {
+        prevVol = volSlider.value;
+        volSlider.value = 0;
+        volValue.textContent = '0%';
+        volIcon.textContent = '🔇';
+        if (typeof SoundEffects !== 'undefined' && typeof SoundEffects.setMasterVolume === 'function') SoundEffects.setMasterVolume(0);
+      } else {
+        volSlider.value = prevVol;
+        volValue.textContent = prevVol + '%';
+        volIcon.textContent = prevVol < 30 ? '🔈' : prevVol < 70 ? '🔉' : '🔊';
+        if (typeof SoundEffects !== 'undefined' && typeof SoundEffects.setMasterVolume === 'function') SoundEffects.setMasterVolume(prevVol / 100);
+      }
+    });
+  }
+})();
 </script>
 <script src="js/lobby.js"></script>
 </body>

@@ -176,28 +176,166 @@ body {
 }
 .overlay .sub-text { font-size: 18px; color: #f093fb; margin-bottom: 20px; }
 
-/* 카운트다운 */
-.countdown-overlay {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.85);
-    z-index: 600;
-    align-items: center;
-    justify-content: center;
+/* ══════════════════════════════════════
+   공통 카운트다운 3, 2, 1, GO!
+   모바일에서도 반드시 보이도록 fixed + vw 단위
+   ══════════════════════════════════════ */
+.cd-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(0, 0, 0, 0.85) !important;
+  z-index: 999999 !important;
+  pointer-events: none;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
-.countdown-overlay.show { display: flex; }
-.countdown-number {
-    font-size: 120px;
-    font-weight: 900;
-    color: var(--gold);
-    text-shadow: 0 0 40px rgba(255,215,0,0.6);
-    animation: cdPop 0.5s;
+
+.cd-num {
+  font-size: 30vw !important;
+  font-weight: 900 !important;
+  color: #f1c40f !important;
+  text-shadow:
+    0 0 30px rgba(241, 196, 15, 0.6),
+    0 0 60px rgba(241, 196, 15, 0.3),
+    0 4px 10px rgba(0, 0, 0, 0.5) !important;
+  animation: cdPop 0.5s ease-out !important;
+  -webkit-animation: cdPop 0.5s ease-out !important;
+  line-height: 1 !important;
+  text-align: center !important;
 }
+
+.cd-go {
+  font-size: 25vw !important;
+  font-weight: 900 !important;
+  color: #2ecc71 !important;
+  text-shadow:
+    0 0 30px rgba(46, 204, 113, 0.6),
+    0 0 60px rgba(46, 204, 113, 0.3),
+    0 4px 10px rgba(0, 0, 0, 0.5) !important;
+  animation: cdPop 0.5s ease-out !important;
+  -webkit-animation: cdPop 0.5s ease-out !important;
+  line-height: 1 !important;
+  text-align: center !important;
+}
+
+.cd-text {
+  font-size: 4vw !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  margin-top: 10px !important;
+  text-align: center !important;
+}
+
 @keyframes cdPop {
-    0% { transform: scale(2); opacity: 0; }
-    50% { transform: scale(0.9); }
-    100% { transform: scale(1); opacity: 1; }
+  0% { transform: scale(2.5); opacity: 0; }
+  60% { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@-webkit-keyframes cdPop {
+  0% { -webkit-transform: scale(2.5); opacity: 0; }
+  60% { -webkit-transform: scale(0.9); opacity: 1; }
+  100% { -webkit-transform: scale(1); opacity: 1; }
+}
+
+@media (min-width: 769px) {
+  .cd-num { font-size: min(30vw, 200px) !important; }
+  .cd-go  { font-size: min(25vw, 160px) !important; }
+  .cd-text { font-size: min(4vw, 24px) !important; }
+}
+
+/* ──────────────────────────────────────
+   볼륨 컨트롤 - 최상단 왼쪽 고정
+   ────────────────────────────────────── */
+.vol-ctrl,
+#volume-control {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 90000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.8em;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.vol-ctrl .vol-icon,
+#volume-control .vol-icon {
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1;
+}
+
+.vol-ctrl input[type="range"],
+#vol-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  outline: none;
+  cursor: pointer;
+}
+
+.vol-ctrl input[type="range"]::-webkit-slider-thumb,
+#vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #FFD700;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+}
+
+.vol-ctrl input[type="range"]::-moz-range-thumb,
+#vol-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #FFD700;
+  cursor: pointer;
+  border: none;
+}
+
+#vol-value {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .vol-ctrl,
+  #volume-control {
+    top: 4px;
+    left: 4px;
+    padding: 4px 8px;
+    gap: 4px;
+    font-size: 0.75em;
+  }
+  .vol-ctrl .vol-icon,
+  #volume-control .vol-icon { font-size: 14px; }
+  .vol-ctrl input[type="range"],
+  #vol-slider { width: 60px; }
+  #vol-value { font-size: 10px; }
 }
 
 /* 게임 공통 */

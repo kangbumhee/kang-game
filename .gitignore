@@ -13,3 +13,4 @@ Thumbs.db
 
 # Optional: uncomment if you add Node tooling
 # node_modules/
+.vercel

@@ -27,9 +27,22 @@ const Presence = {
     this._setMyStatus('online');
     this._setMyLocation('game');
 
-    const myRef = db.ref(`rooms/${this.roomCode}/players/${this.playerId}/status`);
-    myRef.onDisconnect().set('offline');
+    // ── Firebase onDisconnect: 연결 끊기면 자동 offline 처리 ──
+    const myRef = db.ref(`rooms/${this.roomCode}/players/${this.playerId}`);
+    myRef.child('status').onDisconnect().set('offline');
+    myRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
 
+    // ── .info/connected로 재연결 감지 ──
+    db.ref('.info/connected').on('value', snap => {
+      if (snap.val() === true) {
+        // 연결됨 → onDisconnect 재설정
+        myRef.child('status').onDisconnect().set('offline');
+        myRef.child('lastSeen').onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
+        this._setMyStatus('online');
+      }
+    });
+
+    // ── 하트비트 (3초마다) ──
     this.heartbeatTimer = setInterval(() => {
       if (!this.roomCode) return;
       const updates = {};
@@ -38,6 +51,7 @@ const Presence = {
       db.ref().update(updates).catch(() => {});
     }, 3000);
 
+    // ── 브라우저 이벤트 ──
     if (!this.visibilityBound) {
       this.visibilityBound = true;
 
@@ -63,8 +77,35 @@ const Presence = {
         this._clearAutoSkip();
       });
 
+      // ── 앱 완전 종료 / 탭 닫기 대응 ──
       window.addEventListener('pagehide', () => {
         this._setMyStatus('offline');
+        // sendBeacon으로 확실히 전송
+        if (this.roomCode && this.playerId) {
+          const baseUrl = db.ref().toString();
+          const url = `${baseUrl}/rooms/${this.roomCode}/players/${this.playerId}.json`;
+          const data = JSON.stringify({
+            status: 'offline',
+            lastSeen: { '.sv': 'timestamp' }
+          });
+          try {
+            navigator.sendBeacon(url + '?x-http-method-override=PATCH', data);
+          } catch(e) {}
+        }
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (this.roomCode && this.playerId) {
+          const baseUrl = db.ref().toString();
+          const url = `${baseUrl}/rooms/${this.roomCode}/players/${this.playerId}.json`;
+          const data = JSON.stringify({
+            status: 'offline',
+            lastSeen: { '.sv': 'timestamp' }
+          });
+          try {
+            navigator.sendBeacon(url + '?x-http-method-override=PATCH', data);
+          } catch(e) {}
+        }
       });
 
       window.addEventListener('pageshow', () => {
@@ -77,7 +118,17 @@ const Presence = {
 
     const plRef = db.ref(`rooms/${this.roomCode}/players`);
     plRef.on('value', snap => {
-      this._renderStatusBar(snap.val() || {});
+      const players = snap.val() || {};
+      // 내가 강퇴당했는지 확인
+      if (this.playerId && !players[this.playerId]) {
+        this.destroy();
+        sessionStorage.removeItem('roomCode');
+        sessionStorage.removeItem('returnToLobby');
+        alert('방장에 의해 강퇴되었습니다.');
+        window.location.href = window.location.pathname.includes('/games/') ? '../index.html' : 'index.html';
+        return;
+      }
+      this._renderStatusBar(players);
     });
     this.listeners.push(plRef);
   },
@@ -108,12 +159,10 @@ const Presence = {
     });
   },
 
-  /** 게임 종료 시 호출 — 아직 게임 화면에 있지만 게임은 끝남 */
   setGameEnded() {
     this._setMyLocation('gameEnd');
   },
 
-  /** 로비로 돌아갈 때 호출 */
   setBackToLobby() {
     this._setMyLocation('lobby');
   },
@@ -123,6 +172,7 @@ const Presence = {
     if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
     this.listeners.forEach(ref => { try { ref.off(); } catch(e) {} });
     this.listeners = [];
+    try { db.ref('.info/connected').off(); } catch(e) {}
     if (this.statusBarEl && this.statusBarEl.parentNode) {
       this.statusBarEl.parentNode.removeChild(this.statusBarEl);
     }
@@ -195,7 +245,6 @@ const Presence = {
       else if (status === 'away') { dotColor = '#f39c12'; statusIcon = ' 📱'; }
       else { dotColor = '#666'; statusIcon = ' 💤'; }
 
-      // 위치 표시
       let locationIcon = '';
       if (location === 'lobby') { locationIcon = ' 🏠'; }
       else if (location === 'gameEnd') { locationIcon = ' ✅'; }
