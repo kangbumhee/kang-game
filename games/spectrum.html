@@ -95,7 +95,11 @@ async function backToLobby() { PartyUtils.backToLobby(roomCode, gameRef); }
 
 async function init() {
   var snap = await db.ref('rooms/' + roomCode + '/players').once('value');
-  currentPlayers = snap.val() || {};
+  var rawPlayers = snap.val() || {};
+  currentPlayers = {};
+  Object.keys(rawPlayers).forEach(function(pid) {
+    if (rawPlayers[pid] && rawPlayers[pid].name) currentPlayers[pid] = rawPlayers[pid];
+  });
   var hs = await db.ref('rooms/' + roomCode + '/host').once('value');
   isHost = (hs.val() === playerId);
 
@@ -125,6 +129,8 @@ async function init() {
 }
 
 function initGame() {
+  var pids = Object.keys(currentPlayers);
+  if (pids.length < 1) return;
   var qs = QS.slice().sort(function() { return Math.random() - 0.5; }).slice(0, TOTAL_ROUNDS);
   gameRef.set({
     round: 1,

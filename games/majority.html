@@ -96,7 +96,11 @@ async function backToLobby() {
 
 async function init() {
   var snap = await db.ref('rooms/' + roomCode + '/players').once('value');
-  currentPlayers = snap.val() || {};
+  var rawPlayers = snap.val() || {};
+  currentPlayers = {};
+  Object.keys(rawPlayers).forEach(function(pid) {
+    if (rawPlayers[pid] && rawPlayers[pid].name) currentPlayers[pid] = rawPlayers[pid];
+  });
   var hs = await db.ref('rooms/' + roomCode + '/host').once('value');
   isHost = (hs.val() === playerId);
 
@@ -112,6 +116,8 @@ async function init() {
 }
 
 function initGame() {
+  var pids = Object.keys(currentPlayers);
+  if (pids.length < 1) return;
   var alive = {};
   Object.keys(currentPlayers).forEach(function(p) { alive[p] = true; });
 

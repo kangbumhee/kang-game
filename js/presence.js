@@ -236,7 +236,7 @@ const Presence = {
     let html = '';
     Object.keys(players).forEach((pid, i) => {
       const p = players[pid];
-      if (!p || !p.name) return;
+      if (!p || !p.name) return; // name이 없는 플레이어(유령) 제외
       const status = p.status || 'offline';
       const location = p.location || 'lobby';
 

@@ -87,7 +87,11 @@ async function autoSkipHolder(holderId){
 
 async function init(){
   const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
-  currentPlayers=snap.val()||{};
+  var rawPlayers=snap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
   isHost=(hs.val()===playerId);
 
@@ -108,6 +112,7 @@ async function init(){
 
 function initGame(){
   const pids=Object.keys(currentPlayers);
+  if(pids.length<1)return;
   const ms=[...MISSIONS].sort(()=>Math.random()-0.5);
   gameRef.set({round:1,phase:'playing',holder:pids[0]||'',holderIdx:0,mission:ms[0]||'미션!',missions:ms,missionIdx:0,startTime:null,bombTime:Math.floor(Math.random()*10000)+8000,scores:{},explodedPlayer:null,roundId:Date.now()}).then(function(){
     var rules='🔥 폭탄이 터지기 전에 미션 완료!<br>✅ 미션 후 다음 사람에게 넘기기!<br>💥 시간 초과 시 소유자 탈락!';

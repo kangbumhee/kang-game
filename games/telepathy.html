@@ -75,7 +75,11 @@ async function goToGameSelect(){
 
 async function init(){
   const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
-  currentPlayers=snap.val()||{};
+  var rawPlayers=snap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
   isHost=(hs.val()===playerId);
   Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
@@ -86,6 +90,8 @@ async function init(){
 }
 
 function initGame(){
+  var pids=Object.keys(currentPlayers);
+  if(pids.length<1)return;
   gameRef.set({round:1,phase:'choosing',picks:null,scores:{},prompts:PROMPTS.sort(()=>Math.random()-0.5),roundId:Date.now()}).then(function(){
     var rules='🧠 1~10 중 숫자를 선택!<br>📊 가장 많이 고른 숫자가 정답!<br>⏰ 30초 안에 선택!';
     PartyUtils.triggerCountdown(gameRef,isHost,'텔레파시 시작!',rules,null);

@@ -114,7 +114,11 @@ async function autoSkipHolder(holderId) {
 
 async function init(){
   const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
-  currentPlayers=snap.val()||{};
+  var rawPlayers=snap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
   isHost=(hs.val()===playerId);
 
@@ -147,6 +151,7 @@ async function init(){
 
 function initGame(){
   const pids=Object.keys(currentPlayers);
+  if(pids.length<1)return;
   const qs=[...CHOSUNG_SETS].sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
   gameRef.set({round:1,phase:'playing',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:null,roundId:Date.now()}).then(function(){
     var rules='💣 초성에 맞는 단어 입력!<br>⏰ 시간 안에 못 맞추면 폭발!<br>✅ 정답 후 다음 사람에게 전달!';

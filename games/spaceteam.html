@@ -205,9 +205,16 @@ function selectDiff(diff){
 // ── 호스트 시작 ──
 async function hostStart(){
   if(!isHost)return;
+  var freshSnap=await db.ref('rooms/'+roomCode+'/players').once('value');
+  var rawPlayers=freshSnap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
+  var pids=Object.keys(currentPlayers);
+  if(pids.length<2){alert('2명 이상 필요합니다!');return;}
   config=DIFF_CONFIG[selectedDiff];
-  const pids=Object.keys(currentPlayers);
-  const cmds=generateCommands(pids);
+  var cmds=generateCommands(pids);
   await gameRef.set({
     phase:'playing',
     difficulty:selectedDiff,
@@ -268,7 +275,11 @@ async function autoSkipHolder(holderId){
 // ── 초기화 ──
 async function init(){
   const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
-  currentPlayers=snap.val()||{};
+  var rawPlayers=snap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
   isHost=(hs.val()===playerId);
 

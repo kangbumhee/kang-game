@@ -379,6 +379,12 @@ function stopGallopSound(){
 // ═══ 호스트 시작 ═══
 async function hostStart(){
   if(!isHost)return;
+  var freshSnap=await db.ref('rooms/'+roomCode+'/players').once('value');
+  var rawPlayers=freshSnap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
   const pids=Object.keys(currentPlayers);
   const n=Math.min(6,Math.max(3,pids.length+1));
 
@@ -410,7 +416,12 @@ async function hostStart(){
 
 // ═══ init ═══
 async function init(){
-  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');currentPlayers=snap.val()||{};
+  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
+  var rawPlayers=snap.val()||{};
+  currentPlayers={};
+  Object.keys(rawPlayers).forEach(function(pid){
+    if(rawPlayers[pid]&&rawPlayers[pid].name)currentPlayers[pid]=rawPlayers[pid];
+  });
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');isHost=(hs.val()===playerId);
   Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
   PartyUtils.initReactions(roomCode,playerId);

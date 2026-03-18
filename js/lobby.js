@@ -149,9 +149,10 @@ const Lobby = {
         return;
       }
 
-      Object.keys(players).forEach((pid, idx) => {
+      let idx = 0;
+      Object.keys(players).forEach((pid) => {
         const p = players[pid];
-        if (!p) return;
+        if (!p || !p.name) return; // name이 없는 엔트리 스킵 (유령 플레이어)
 
         const div = document.createElement('div');
         div.className = 'player-chip';
@@ -194,6 +195,7 @@ const Lobby = {
         }
 
         list.appendChild(div);
+        idx++;
       });
     });
     this.listeners.push(plRef);
@@ -313,15 +315,16 @@ const Lobby = {
       const now = Date.now();
 
       Object.keys(players).forEach(async (pid) => {
-        if (pid === this.playerId) return; // 자기 자신은 스킵
+        if (pid === this.playerId) return;
         const p = players[pid];
-        if (!p) return;
-
+        if (!p || !p.name) {
+          console.log('[Lobby] Removing ghost player:', pid);
+          await db.ref(`rooms/${this.roomCode}/players/${pid}`).remove();
+          return;
+        }
         const lastSeen = p.lastSeen || 0;
         const status = p.status || 'offline';
         const elapsed = now - lastSeen;
-
-        // 60초 이상 오프라인이면 자동 제거
         if (status === 'offline' && elapsed > 60000) {
           console.log(`[Lobby] Auto-removing stale player: ${p.name} (offline ${Math.round(elapsed/1000)}s)`);
           await db.ref(`rooms/${this.roomCode}/players/${pid}`).remove();
