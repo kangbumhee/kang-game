@@ -128,16 +128,14 @@ function initGame() {
   var qs = QS.slice().sort(function() { return Math.random() - 0.5; }).slice(0, TOTAL_ROUNDS);
   gameRef.set({
     round: 1,
-    phase: 'countdown',
+    phase: 'choosing',
     questions: qs,
     choices: null,
     scores: {},
     roundId: Date.now()
   }).then(function() {
-    var rules = '🎯 스펙트럼에서 위치를 선택!<br>📊 전체 평균에 가까울수록 높은 점수!<br>⏰ 30초 안에 선택하세요!';
-    PartyUtils.triggerCountdown(gameRef, isHost, '스펙트럼 시작!', rules, function() {
-      gameRef.update({ phase: 'choosing' });
-    });
+    var rules = '🎯 스펙트럼에서 위치를 선택!<br>📊 전체 평균에 가까울수록 높은 점수!<br>⏰ 30초 안에 선택!';
+    PartyUtils.triggerCountdown(gameRef, isHost, '스펙트럼 시작!', rules, null);
   });
 }
 
@@ -173,17 +171,6 @@ function render(d) {
   var qs = d.questions || [];
   var choices = d.choices || {};
   var scores = d.scores || {};
-
-  if (phase === 'countdown') {
-    document.getElementById('status').textContent = '⏳ 준비 중...';
-    document.getElementById('qText').textContent = '';
-    document.getElementById('specWrap').style.display = 'none';
-    document.getElementById('resultArea').style.display = 'none';
-    document.getElementById('btnConfirm').style.display = 'none';
-    document.getElementById('btnReveal').style.display = 'none';
-    document.getElementById('btnNext').style.display = 'none';
-    return;
-  }
 
   document.getElementById('specWrap').style.display = '';
 

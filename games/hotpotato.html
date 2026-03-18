@@ -108,25 +108,15 @@ async function init(){
 function initGame(){
   const pids=Object.keys(currentPlayers);
   const ms=[...MISSIONS].sort(()=>Math.random()-0.5);
-  gameRef.set({round:1,phase:'countdown',holder:pids[0]||'',holderIdx:0,mission:ms[0]||'미션!',missions:ms,missionIdx:0,startTime:null,bombTime:Math.floor(Math.random()*10000)+8000,scores:{},explodedPlayer:null,roundId:Date.now()}).then(function(){
-    var rules='🔥 폭탄이 터지기 전에 미션 완료!<br>✅ 미션을 하고 다음 사람에게 넘기세요!<br>💥 시간이 다 되면 폭탄 소유자가 탈락!';
-    PartyUtils.triggerCountdown(gameRef,isHost,'폭탄 돌리기 시작!',rules,function(){
-      gameRef.update({phase:'playing',startTime:Date.now()});
-    });
+  gameRef.set({round:1,phase:'playing',holder:pids[0]||'',holderIdx:0,mission:ms[0]||'미션!',missions:ms,missionIdx:0,startTime:Date.now(),bombTime:Math.floor(Math.random()*10000)+8000,scores:{},explodedPlayer:null,roundId:Date.now()}).then(function(){
+    var rules='🔥 폭탄이 터지기 전에 미션 완료!<br>✅ 미션 후 다음 사람에게 넘기기!<br>💥 시간 초과 시 소유자 탈락!';
+    PartyUtils.triggerCountdown(gameRef,isHost,'폭탄 돌리기!',rules,null);
   });
 }
 
 function render(d){
   if(!d)return;
   const phase=d.phase||'playing',round=d.round||1,scores=d.scores||{};
-  if(phase==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('holderName').textContent='';
-    document.getElementById('mission').textContent='';
-    document.getElementById('passBtn').style.display='none';
-    document.getElementById('resultArea').style.display='none';
-    return;
-  }
   if(phase==='final'){renderFinal(scores);return;}
   const holder=d.holder||'';
   document.getElementById('holderName').textContent=getName(holder);

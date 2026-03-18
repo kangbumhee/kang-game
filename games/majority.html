@@ -117,7 +117,7 @@ function initGame() {
 
   gameRef.set({
     round: 1,
-    phase: 'countdown',
+    phase: 'choosing',
     questions: QUESTIONS.slice().sort(function() { return Math.random() - 0.5; }),
     votes: {},
     alive: alive,
@@ -126,9 +126,7 @@ function initGame() {
     roundId: Date.now()
   }).then(function() {
     var rules = '✅ 다수가 선택한 쪽이 생존!<br>❌ 소수파 중 <b>1명만</b> 랜덤 탈락!<br>👥 2명 남으면 같은 걸 골라야 생존!';
-    PartyUtils.triggerCountdown(gameRef, isHost, '다수결 게임 시작!', rules, function() {
-      gameRef.update({ phase: 'choosing' });
-    });
+    PartyUtils.triggerCountdown(gameRef, isHost, '다수결 게임 시작!', rules, null);
   });
 }
 
@@ -138,16 +136,6 @@ function render(d) {
   var round = d.round || 1;
   var votes = d.votes || {};
   var alive = d.alive || {};
-
-  if (phase === 'countdown') {
-    document.getElementById('status').textContent = '⏳ 준비 중...';
-    document.getElementById('question').textContent = '';
-    document.getElementById('choices').innerHTML = '';
-    document.getElementById('resultArea').style.display = 'none';
-    document.getElementById('btnNext').style.display = 'none';
-    PartyUtils.clearAutoSubmitTimer('vote');
-    return;
-  }
 
   if (phase === 'final') { renderFinal(alive); return; }
   if (round > d.questions.length) { renderFinal(alive); return; }

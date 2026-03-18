@@ -143,25 +143,15 @@ async function init(){
 function initGame(){
   const pids=Object.keys(currentPlayers);
   const qs=[...CHOSUNG_SETS].sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
-  gameRef.set({round:1,phase:'countdown',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:null,roundId:Date.now()}).then(function(){
-    var rules='💣 초성에 맞는 단어를 입력!<br>⏰ 시간 안에 못 맞추면 폭발!<br>✅ 정답을 내면 다음 사람에게 폭탄 전달!';
-    PartyUtils.triggerCountdown(gameRef,isHost,'초성 폭탄 시작!',rules,function(){
-      gameRef.update({phase:'playing',startTime:Date.now()});
-    });
+  gameRef.set({round:1,phase:'playing',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:Date.now(),roundId:Date.now()}).then(function(){
+    var rules='💣 초성에 맞는 단어 입력!<br>⏰ 시간 안에 못 맞추면 폭발!<br>✅ 정답을 내면 다음 사람에게 전달!';
+    PartyUtils.triggerCountdown(gameRef,isHost,'초성 폭탄!',rules,null);
   });
 }
 
 function render(d){
   if(!d)return;
   const phase=d.phase||'playing',round=d.round||1,qs=d.questions||[];
-  if(phase==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('chosung').textContent='';
-    document.getElementById('holder').innerHTML='';
-    document.getElementById('inputArea').style.display='none';
-    document.getElementById('resultArea').style.display='none';
-    return;
-  }
   if(phase==='final'){renderFinal(d.scores||{});return;}
   if(round>qs.length){renderFinal(d.scores||{});return;}
   const q=qs[round-1];if(!q)return;

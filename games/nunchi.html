@@ -159,40 +159,6 @@ h1{font-size:1.6em;margin-bottom:8px}
 </div>
 
 <script>
-// ═══ 공통 카운트다운 (전체 동기화) ═══
-function triggerCountdown(subtitle,cb){
-  if(!isHost)return;
-  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
-  showCountdownUI(subtitle,cb);
-}
-function showCountdownUI(subtitle,cb){
-  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
-  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
-  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
-  document.body.appendChild(overlay);
-  var steps=['3','2','1','GO!'],i=0;
-  function tick(){
-    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
-    var txt=steps[i];overlay.innerHTML='';
-    var el=document.createElement('div');el.textContent=txt;
-    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    overlay.appendChild(el);
-    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
-    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
-    i++;setTimeout(tick,800);
-  }
-  tick();
-}
-var _lastCountdownId=null;
-function listenCountdown(){
-  gameRef.child('countdown').on('value',function(snap){
-    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
-    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
-    showCountdownUI(cd.subtitle||'게임 시작!',null);
-  });
-}
 const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
 const gameRef=db.ref(`rooms/${roomCode}/gameData`);
 let isHost=false,currentPlayers={};
@@ -316,12 +282,10 @@ async function hostStart(){
     });
   }
 
-  base.phase='countdown';
+  base.phase='playing';
   await gameRef.set(base);
   var rules=selectedMode==='classic'?'🔢 1부터 순서대로 숫자를 외치세요!<br>⚠️ 동시에 외치거나 마지막에 남으면 탈락!':selectedMode==='target'?'🎯 목표 숫자에 맞추세요!<br>💥 합이 넘으면 마지막에 낸 사람 탈락!':'눈치 게임 시작!';
-  PartyUtils.triggerCountdown(gameRef,isHost,'눈치 게임 시작!',rules,function(){
-    gameRef.update({phase:'playing'});
-  });
+  PartyUtils.triggerCountdown(gameRef,isHost,'눈치 게임 시작!',rules,null);
 }
 
 function generateAuctionItems(){
@@ -432,15 +396,6 @@ function showModeSelect(){
 // ── 메인 렌더 ──
 function render(d){
   if(!d)return;
-  if((d.phase||'playing')==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('modeSelect').style.display='none';
-    document.getElementById('guestWait').style.display='none';
-    document.getElementById('gameArea').style.display='none';
-    document.getElementById('resultArea').style.display='none';
-    return;
-  }
-
   document.getElementById('modeSelect').style.display='none';
   document.getElementById('guestWait').style.display='none';
   document.getElementById('gameArea').style.display='';

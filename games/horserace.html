@@ -367,41 +367,6 @@ function renderTrack(horses, mode, isRacing){
   document.getElementById('liveRank').innerHTML=rankHtml;
 }
 
-// ═══ 카운트다운 (전체 동기화) ═══
-function triggerCountdown(subtitle,cb){
-  if(!isHost)return;
-  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
-  showCountdownUI(subtitle,cb);
-}
-function showCountdownUI(subtitle,cb){
-  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
-  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
-  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
-  document.body.appendChild(overlay);
-  var steps=['3','2','1','GO!'],i=0;
-  function tick(){
-    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
-    var txt=steps[i];overlay.innerHTML='';
-    var el=document.createElement('div');el.textContent=txt;
-    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    overlay.appendChild(el);
-    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
-    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
-    i++;setTimeout(tick,800);
-  }
-  tick();
-}
-var _lastCountdownId=null;
-function listenCountdown(){
-  gameRef.child('countdown').on('value',function(snap){
-    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
-    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
-    showCountdownUI(cd.subtitle||'게임 시작!',null);
-  });
-}
-
 // ═══ 갤럽 사운드 ═══
 function startGallopSound(){
   stopGallopSound();
@@ -417,29 +382,29 @@ async function hostStart(){
   const pids=Object.keys(currentPlayers);
   const n=Math.min(6,Math.max(3,pids.length+1));
 
-  var rules='🏇 말에 베팅하고 경주를 지켜보세요!<br>🏆 1등 말에 베팅하면 점수 획득!';
+  var rules='🏇 말에 베팅하고 경주를 지켜보세요!<br>🏆 1등 말에 베팅하면 점수!';
   if(selectedMode==='classic'){
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,color:HORSE_COLORS[i]});
-    await gameRef.set({mode:'classic',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
-    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'betting'});});
+    await gameRef.set({mode:'classic',round:1,phase:'betting',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,null);
   }else if(selectedMode==='boost'){
     const horses=[];pids.forEach((pid,i)=>{horses.push({name:getName(pid),pos:0,pid,color:HORSE_COLORS[i%HORSE_COLORS.length]});});
-    await gameRef.set({mode:'boost',round:1,phase:'countdown',horses,taps:{},scores:{},winner:-1,raceStart:null,roundId:Date.now()});
-    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'racing',raceStart:Date.now()});startGallopSound();});
+    await gameRef.set({mode:'boost',round:1,phase:'racing',horses,taps:{},scores:{},winner:-1,raceStart:Date.now(),roundId:Date.now()});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){startGallopSound();});
   }else if(selectedMode==='quiz'){
     const horses=[];pids.forEach((pid,i)=>{horses.push({name:getName(pid),pos:0,pid,color:HORSE_COLORS[i%HORSE_COLORS.length]});});
     const quizzes=[...QUIZ_POOL].sort(()=>Math.random()-0.5).slice(0,15);
-    await gameRef.set({mode:'quiz',round:1,phase:'countdown',horses,quizzes,qIdx:0,answers:null,scores:{},winner:-1,roundId:Date.now()});
-    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'question'});});
+    await gameRef.set({mode:'quiz',round:1,phase:'question',horses,quizzes,qIdx:0,answers:null,scores:{},winner:-1,roundId:Date.now()});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,null);
   }else if(selectedMode==='obstacle'){
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,color:HORSE_COLORS[i]});
-    await gameRef.set({mode:'obstacle',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,event:null,turnNum:0,roundId:Date.now()});
-    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'betting'});});
+    await gameRef.set({mode:'obstacle',round:1,phase:'betting',horses,bets:null,scores:{},winner:-1,event:null,turnNum:0,roundId:Date.now()});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,null);
   }else if(selectedMode==='odds'){
     const oddsArr=[1.5,2,3,4,6,10].sort(()=>Math.random()-0.5).slice(0,n);
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,odds:oddsArr[i],color:HORSE_COLORS[i]});
-    await gameRef.set({mode:'odds',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
-    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'betting'});});
+    await gameRef.set({mode:'odds',round:1,phase:'betting',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,null);
   }
 }
 
@@ -471,15 +436,6 @@ function showModeSelect(){
 // ═══ 메인 렌더 ═══
 function render(d){
   if(!d)return;
-  if((d.phase||'')==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('modeSelect').style.display='none';
-    document.getElementById('guestWait').style.display='none';
-    document.getElementById('raceContainer').style.display='none';
-    document.getElementById('gameArea').style.display='none';
-    document.getElementById('resultArea').style.display='none';
-    return;
-  }
   document.getElementById('modeSelect').style.display='none';
   document.getElementById('guestWait').style.display='none';
   document.getElementById('gameArea').style.display='';
@@ -533,17 +489,13 @@ async function startRace(){
   if(!isHost)return;const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
   const mode=d.mode;
   if(mode==='classic'||mode==='odds'){
-    triggerCountdown('경주 시작!',function(){
-      gameRef.update({phase:'racing'});
-      startGallopSound();
-      runAutoRace(d);
-    });
+    await gameRef.update({phase:'racing'});
+    startGallopSound();
+    runAutoRace(d);
   }else if(mode==='obstacle'){
-    triggerCountdown('경주 시작!',function(){
-      gameRef.update({phase:'racing'});
-      startGallopSound();
-      runObstacleRace(d);
-    });
+    await gameRef.update({phase:'racing'});
+    startGallopSound();
+    runObstacleRace(d);
   }
 }
 

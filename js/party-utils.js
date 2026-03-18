@@ -19,10 +19,9 @@ const PartyUtils = {
 
   startCache(gameRef, renderFn) {
     this._cacheRef = gameRef;
-    this._cacheCallback = renderFn;
     gameRef.on('value', function(snap) {
       PartyUtils._cache = snap.val();
-      if (PartyUtils._cache && renderFn) renderFn(PartyUtils._cache);
+      if (renderFn) renderFn(PartyUtils._cache);
     });
   },
 
@@ -36,50 +35,50 @@ const PartyUtils = {
       this._cacheRef = null;
     }
     this._cache = null;
-    this._cacheCallback = null;
   },
 
   // ═══════════════════════════════════════
-  // 2-Phase 카운트다운
+  // 카운트다운 (_countdown 시그널, phase 사용 안 함)
   // ═══════════════════════════════════════
   _lastCountdownId: null,
+  _countdownActive: false,
 
   showCountdownUI(subtitle, rules, cb) {
+    this._countdownActive = true;
     var old = document.getElementById('cdOverlayNew');
     if (old) old.remove();
 
     var overlay = document.createElement('div');
     overlay.id = 'cdOverlayNew';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);pointer-events:all;';
     document.body.appendChild(overlay);
 
-    // 먼저 규칙을 1.5초간 보여줌
     if (rules) {
       overlay.innerHTML = '';
       var rulesDiv = document.createElement('div');
       rulesDiv.style.cssText = 'text-align:center;padding:20px;max-width:90vw;';
       var titleEl = document.createElement('div');
-      titleEl.style.cssText = 'font-size:6vw;font-weight:900;color:#f1c40f;margin-bottom:15px;';
+      titleEl.style.cssText = 'font-size:min(6vw,36px);font-weight:900;color:#f1c40f;margin-bottom:15px;';
       titleEl.textContent = subtitle || '게임 시작!';
       rulesDiv.appendChild(titleEl);
-
       var rulesEl = document.createElement('div');
-      rulesEl.style.cssText = 'font-size:3.5vw;color:rgba(255,255,255,0.8);line-height:1.6;';
+      rulesEl.style.cssText = 'font-size:min(3.5vw,18px);color:rgba(255,255,255,0.8);line-height:1.6;';
       rulesEl.innerHTML = rules;
       rulesDiv.appendChild(rulesEl);
       overlay.appendChild(rulesDiv);
-
       setTimeout(function() { doCountdown(); }, 2000);
     } else {
       doCountdown();
     }
 
+    var self = this;
     function doCountdown() {
       var steps = ['3','2','1','GO!'], i = 0;
       function tick() {
         if (i >= steps.length) {
           setTimeout(function() {
             overlay.remove();
+            self._countdownActive = false;
             if (cb) cb();
           }, 400);
           return;
@@ -89,17 +88,11 @@ const PartyUtils = {
         var el = document.createElement('div');
         el.textContent = txt;
         if (txt === 'GO!') {
-          el.style.cssText = 'font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
+          el.style.cssText = 'font-size:min(25vw,180px);font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
         } else {
-          el.style.cssText = 'font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
+          el.style.cssText = 'font-size:min(30vw,200px);font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
         }
         overlay.appendChild(el);
-        if (txt !== 'GO!' && subtitle) {
-          var sub = document.createElement('div');
-          sub.style.cssText = 'font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';
-          sub.textContent = subtitle;
-          overlay.appendChild(sub);
-        }
         if (typeof SoundEffects !== 'undefined' && typeof SoundEffects.play === 'function') {
           SoundEffects.play(txt === 'GO!' ? 'go' : 'countdown');
         }
@@ -113,7 +106,7 @@ const PartyUtils = {
   triggerCountdown(gameRef, isHost, subtitle, rules, cb) {
     if (!isHost) return;
     var countdownId = 'cd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-    gameRef.child('countdown').set({
+    gameRef.child('_countdown').set({
       id: countdownId,
       subtitle: subtitle || '게임 시작!',
       rules: rules || ''
@@ -123,7 +116,7 @@ const PartyUtils = {
 
   listenCountdown(gameRef, isHost) {
     var self = this;
-    gameRef.child('countdown').on('value', function(snap) {
+    gameRef.child('_countdown').on('value', function(snap) {
       var cd = snap.val();
       if (!cd || !cd.id) return;
       if (isHost) return;
@@ -131,6 +124,10 @@ const PartyUtils = {
       self._lastCountdownId = cd.id;
       self.showCountdownUI(cd.subtitle || '게임 시작!', cd.rules || null, null);
     });
+  },
+
+  isCountdownActive() {
+    return this._countdownActive;
   },
 
   // ═══════════════════════════════════════

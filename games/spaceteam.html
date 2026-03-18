@@ -99,7 +99,7 @@ h1{font-size:1.6em;margin-bottom:8px}
       <span class="icon">🔥</span>어려움<span class="label">6개 중 선택<br>1.5초 셔플<br>5초 타이머</span>
     </div>
     <div class="diff-btn" data-diff="hell" onclick="selectDiff('hell')">
-      <span class="icon">💀</span>지옥<span class="label">8개 중 선택<br>1초 셔플<br>3초 타이머</span>
+      <span class="icon">💀</span>지옥<span class="label">8개 중 선택<br>1.5초 셔플<br>5초 타이머<br>색상 혼란</span>
     </div>
   </div>
   <button class="btn btn-primary" style="margin-top:15px;width:100%;font-size:1.1em;" onclick="hostStart()">🚀 발사!</button>
@@ -127,40 +127,6 @@ h1{font-size:1.6em;margin-bottom:8px}
   <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'race');this.textContent='🎵OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:0.8em;">🎵ON/OFF</button>
 </div>
 <script>
-// ═══ 공통 카운트다운 (전체 동기화) ═══
-function triggerCountdown(subtitle,cb){
-  if(!isHost)return;
-  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
-  showCountdownUI(subtitle,cb);
-}
-function showCountdownUI(subtitle,cb){
-  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
-  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
-  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
-  document.body.appendChild(overlay);
-  var steps=['3','2','1','GO!'],i=0;
-  function tick(){
-    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
-    var txt=steps[i];overlay.innerHTML='';
-    var el=document.createElement('div');el.textContent=txt;
-    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    overlay.appendChild(el);
-    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
-    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
-    i++;setTimeout(tick,800);
-  }
-  tick();
-}
-var _lastCountdownId=null;
-function listenCountdown(){
-  gameRef.child('countdown').on('value',function(snap){
-    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
-    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
-    showCountdownUI(cd.subtitle||'게임 시작!',null);
-  });
-}
 const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
 const gameRef=db.ref(`rooms/${roomCode}/gameData`);
 let isHost=false,currentPlayers={};
@@ -185,7 +151,7 @@ const DIFF_CONFIG={
   easy:   {btnCount:4, shuffleMs:0,    turnTime:0,  hpDecayMs:3000, hpDecay:1, hpWrong:8,  hpCorrect:5, label:'쉬움'},
   normal: {btnCount:4, shuffleMs:3000, turnTime:8,  hpDecayMs:2500, hpDecay:2, hpWrong:10, hpCorrect:4, label:'보통'},
   hard:   {btnCount:6, shuffleMs:1500, turnTime:5,  hpDecayMs:2000, hpDecay:3, hpWrong:12, hpCorrect:3, label:'어려움'},
-  hell:   {btnCount:8, shuffleMs:1000, turnTime:3,  hpDecayMs:1500, hpDecay:4, hpWrong:15, hpCorrect:2, label:'지옥'}
+  hell:   {btnCount:8, shuffleMs:1500, turnTime:5,  hpDecayMs:1500, hpDecay:4, hpWrong:15, hpCorrect:2, label:'지옥', colorMismatch:true}
 };
 
 let selectedDiff='easy';
@@ -243,20 +209,18 @@ async function hostStart(){
   const pids=Object.keys(currentPlayers);
   const cmds=generateCommands(pids);
   await gameRef.set({
-    phase:'countdown',
+    phase:'playing',
     difficulty:selectedDiff,
     hp:100,
     completed:0,
     total:TOTAL_MISSIONS,
     commands:cmds,
     cmdIdx:0,
-    turnStart:null,
+    turnStart:Date.now(),
     roundId:Date.now()
   });
-  var rules='🚀 화면의 명령을 수행하세요!<br>⚡ 버튼이 계속 바뀌니 빠르게!<br>❤️ HP가 0이 되면 우주선 파괴!';
-  PartyUtils.triggerCountdown(gameRef,isHost,'발사 준비!',rules,function(){
-    gameRef.update({phase:'playing',turnStart:Date.now()});
-  });
+  var rules='🚀 화면의 명령을 수행하세요!<br>⚡ 버튼이 바뀌니 빠르게!<br>❤️ HP 0 = 우주선 파괴!';
+  PartyUtils.triggerCountdown(gameRef,isHost,'발사 준비!',rules,null);
 }
 
 function generateCommands(pids){
@@ -338,15 +302,6 @@ function showDiffSelect(){
 function render(d){
   if(!d)return;
   const phase=d.phase||'playing';
-  if(phase==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('diffSelect').style.display='none';
-    document.getElementById('guestWait').style.display='none';
-    document.getElementById('hpBarWrap').style.display='none';
-    document.getElementById('commandBox').style.display='none';
-    document.getElementById('resultArea').style.display='none';
-    return;
-  }
   const diff=d.difficulty||'easy';
   config=DIFF_CONFIG[diff]||DIFF_CONFIG.easy;
   const hp=d.hp||0;
@@ -468,7 +423,12 @@ function renderButtons(curr, isReshuffle){
   buttons.forEach(action=>{
     const parts=action.split(' ');
     const colorName=parts[0];
-    const hex=COLOR_HEX[colorName]||'#ccc';
+    let hex=COLOR_HEX[colorName]||'#ccc';
+    if(config.colorMismatch){
+      const otherColors=Object.keys(COLOR_HEX).filter(c=>c!==colorName);
+      const fakeColor=otherColors[Math.floor(Math.random()*otherColors.length)];
+      hex=COLOR_HEX[fakeColor]||'#ccc';
+    }
     const escaped=action.replace(/'/g,"\\'");
     html+=`<button class="act-btn shuffle-in" onclick="doAction('${escaped}')" style="border-color:${hex}40;color:${hex};flex-basis:calc(${100/cols}% - 8px)">${action}</button>`;
   });

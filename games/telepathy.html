@@ -86,22 +86,15 @@ async function init(){
 }
 
 function initGame(){
-  gameRef.set({round:1,phase:'countdown',picks:null,scores:{},prompts:PROMPTS.sort(()=>Math.random()-0.5),roundId:Date.now()}).then(function(){
-    var rules='🧠 1~10 중 숫자를 선택!<br>📊 가장 많은 사람이 고른 숫자를 맞추면 점수!<br>⏰ 30초 안에 선택!';
-    PartyUtils.triggerCountdown(gameRef,isHost,'텔레파시 시작!',rules,function(){gameRef.update({phase:'choosing'});});
+  gameRef.set({round:1,phase:'choosing',picks:null,scores:{},prompts:PROMPTS.sort(()=>Math.random()-0.5),roundId:Date.now()}).then(function(){
+    var rules='🧠 1~10 중 숫자를 선택!<br>📊 가장 많이 고른 숫자가 정답!<br>⏰ 30초 안에 선택!';
+    PartyUtils.triggerCountdown(gameRef,isHost,'텔레파시 시작!',rules,null);
   });
 }
 
 function render(d){
   if(!d)return;
   const phase=d.phase||'choosing',round=d.round||1,picks=d.picks||{},scores=d.scores||{},prompts=d.prompts||PROMPTS;
-  if(phase==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('prompt').textContent='';
-    document.getElementById('grid').innerHTML='';
-    document.getElementById('resultArea').style.display='none';
-    return;
-  }
   if(phase==='final'){renderFinal(scores);return;}
   document.getElementById('prompt').textContent=prompts[(round-1)%prompts.length]||'숫자를 고르세요!';
 
