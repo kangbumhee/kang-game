@@ -741,6 +741,12 @@ body {
 /* ═══════════════════════════════════════
    리액션 바 반응형
    ═══════════════════════════════════════ */
+/* 게임 종료 — 다른 모드 선택 버튼 (눈치, 경마, 같이소리질러) */
+.btn-mode {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
 @media (max-width: 480px) {
   #reactionBar {
     bottom: 50px !important;

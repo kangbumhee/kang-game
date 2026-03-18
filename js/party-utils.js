@@ -361,7 +361,7 @@ const PartyUtils = {
     } else {
       html += '<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
     }
-    html += '<button class="btn-lobby2" onclick="' + (callbacks.lobby || 'backToLobby()') + '">🏠 로비로</button>';
+    html += '<button class="btn-lobby2" onclick="' + (callbacks.lobby || 'backToLobby()') + '">🚪 로비로</button>';
     html += '</div>';
     container.innerHTML = html;
   },

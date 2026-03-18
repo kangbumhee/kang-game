@@ -168,12 +168,12 @@ function renderEndButtons(container){
   let html='<div class="end-buttons">';
   if(isHost){
     html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
-    html+='<button class="btn-lobby2" onclick="goToDiffSelect()">⚙️ 난이도 변경</button>';
+    html+='<button class="btn-mode" onclick="goToDiffSelect()">⚙️ 난이도 변경</button>';
     html+='<button class="btn-lobby2" onclick="goToGameSelect()">🏠 다른 게임 선택</button>';
   }else{
     html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
   }
-  html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
+  html+='<button class="btn-lobby2" onclick="backToLobby()">🚪 로비로</button>';
   html+='</div>';
   container.innerHTML=html;
 }
@@ -188,6 +188,8 @@ async function goToDiffSelect(){
 
 async function goToGameSelect(){
   if(!isHost)return;
+  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
+  stopAllTimers();
   PartyUtils.goToGameSelect(roomCode,gameRef,stopAllTimers);
 }
 
@@ -309,6 +311,8 @@ function showDiffSelect(){
   document.getElementById('turnTimerWrap').style.display='none';
   document.getElementById('resultArea').style.display='none';
   document.getElementById('status').textContent='⚙️ 난이도를 선택하세요';
+  var btnBack=document.getElementById('btnBackMain');
+  if(btnBack)btnBack.style.display='';
 }
 
 // ── 렌더링 ──

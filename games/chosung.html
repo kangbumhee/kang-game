@@ -85,11 +85,11 @@ function renderEndButtons(container){
   let html='<div class="end-buttons">';
   if(isHost){
     html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
-    html+='<button class="btn-lobby" onclick="goToGameSelect()">🎮 다른 게임 선택</button>';
+    html+='<button class="btn-lobby2" onclick="goToGameSelect()">🏠 다른 게임 선택</button>';
   }else{
     html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
   }
-  html+='<button class="btn-lobby" onclick="backToLobby()">🏠 로비로</button>';
+  html+='<button class="btn-lobby2" onclick="backToLobby()">🚪 로비로</button>';
   html+='</div>';
   container.innerHTML=html;
 }
