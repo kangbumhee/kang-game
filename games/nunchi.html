@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<script src="../js/party-utils.js"></script>
 <link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -236,15 +237,10 @@ async function goToModeSelect(){
 
 async function goToGameSelect(){
   if(!isHost)return;
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  stopReverseCountdown();
-  stopTargetTurnTimer();
-  if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
-  Presence.setBackToLobby();Presence.destroy();gameRef.off();
-  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
-  await new Promise(function(r){setTimeout(r,300);});
-  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+  PartyUtils.goToGameSelect(roomCode,gameRef,function(){
+    stopReverseCountdown();stopTargetTurnTimer();
+    if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
+  });
 }
 
 // ── 모드 선택 ──
@@ -322,7 +318,8 @@ async function hostStart(){
 
   base.phase='countdown';
   await gameRef.set(base);
-  triggerCountdown('눈치 게임 시작!',function(){
+  var rules=selectedMode==='classic'?'🔢 1부터 순서대로 숫자를 외치세요!<br>⚠️ 동시에 외치거나 마지막에 남으면 탈락!':selectedMode==='target'?'🎯 목표 숫자에 맞추세요!<br>💥 합이 넘으면 마지막에 낸 사람 탈락!':'눈치 게임 시작!';
+  PartyUtils.triggerCountdown(gameRef,isHost,'눈치 게임 시작!',rules,function(){
     gameRef.update({phase:'playing'});
   });
 }
@@ -351,29 +348,16 @@ async function init(){
   isHost=(hs.val()===playerId);
 
   Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
-
+  PartyUtils.initReactions(roomCode,playerId);
+  PartyUtils.listenCountdown(gameRef,isHost);
+  PartyUtils.listenBackToLobby(roomCode,gameRef,function(){
+    stopReverseCountdown();stopTargetTurnTimer();
+    if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
+  });
   gameRef.on('value',s=>{
     const d=s.val();
     if(!d){showModeSelect();return;}
     render(d);
-  });
-  listenCountdown();
-  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
-    Presence.destroy();gameRef.off();
-    sessionStorage.setItem('returnToLobby','true');
-    window.location.href='../index.html';
-  });
-  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    Presence.destroy();gameRef.off();
-    sessionStorage.removeItem('roomCode');
-    sessionStorage.removeItem('returnToLobby');
-    alert('방장이 방을 나갔습니다.');
-    window.location.href='../index.html';
   });
 
   if(isHost){
@@ -536,13 +520,15 @@ function renderClassic(d){
 }
 
 async function tapClassic(){
+  var result=await gameRef.child('currentNum').transaction(function(current){return (current||0)+1;});
+  if(!result.committed)return;
+  var newNum=result.snapshot.val();
   const snap=await gameRef.once('value');const d=snap.val();
   if(!d||d.phase!=='playing'||d.mode!=='classic')return;
   if(!(d.alive||{})[playerId]||(d.taps||{})[playerId])return;
   SoundEffects.play('click');
-  const newNum=(d.currentNum||0)+1;
-  await gameRef.child(`taps/${playerId}`).set({num:newNum,time:Date.now(),name:playerName});
-  await gameRef.child('currentNum').set(newNum);
+  if(typeof PartyUtils!=='undefined')PartyUtils.vibrate(50);
+  await gameRef.child('taps/'+playerId).set({num:newNum,time:firebase.database.ServerValue.TIMESTAMP,name:playerName});
 }
 
 async function checkClassicEnd(){
@@ -1354,7 +1340,8 @@ function renderFinal(scores, mode){
   sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
   html+='</div><div id="endBtns"></div>';
   document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
-  renderEndButtons(document.getElementById('endBtns'));
+  PartyUtils.renderEndButtons(document.getElementById('endBtns'),isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});
+  PartyUtils.addPartyScore(roomCode,scores).then(function(){PartyUtils.renderPartyScoreBoard(roomCode,currentPlayers);});
   SoundEffects.play('fanfare');
 }
 
@@ -1362,18 +1349,11 @@ function renderFinal(scores, mode){
 let targetTimeoutChecker=null;
 
 async function backToLobby(){
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
-  stopReverseCountdown();
-  stopTargetTurnTimer();
-  if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
-  Presence.setBackToLobby();
-  Presence.destroy();
-  gameRef.off();
-  const rc=Utils.getRoomCode();
-  if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
-  sessionStorage.setItem('returnToLobby','true');
-  window.location.href='../index.html';
+  PartyUtils.backToLobby(roomCode,gameRef,function(){
+    if(reverseCheckTimer){clearInterval(reverseCheckTimer);reverseCheckTimer=null;}
+    stopReverseCountdown();stopTargetTurnTimer();
+    if(targetTimeoutChecker){clearInterval(targetTimeoutChecker);targetTimeoutChecker=null;}
+  });
 }
 
 init();

@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<script src="../js/party-utils.js"></script>
 <link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -59,40 +60,6 @@ h1{font-size:1.6em;margin-bottom:8px}
   <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'tense');this.textContent='🎵OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:0.8em;">🎵ON/OFF</button>
 </div>
 <script>
-// ═══ 공통 카운트다운 (전체 동기화) ═══
-function triggerCountdown(subtitle,cb){
-  if(!isHost)return;
-  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
-  showCountdownUI(subtitle,cb);
-}
-function showCountdownUI(subtitle,cb){
-  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
-  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
-  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
-  document.body.appendChild(overlay);
-  var steps=['3','2','1','GO!'],i=0;
-  function tick(){
-    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
-    var txt=steps[i];overlay.innerHTML='';
-    var el=document.createElement('div');el.textContent=txt;
-    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    overlay.appendChild(el);
-    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
-    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
-    i++;setTimeout(tick,800);
-  }
-  tick();
-}
-var _lastCountdownId=null;
-function listenCountdown(){
-  gameRef.child('countdown').on('value',function(snap){
-    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
-    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
-    showCountdownUI(cd.subtitle||'게임 시작!',null);
-  });
-}
 const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
 const gameRef=db.ref(`rooms/${roomCode}/gameData`);
 let isHost=false,currentPlayers={},checkTimer=null;
@@ -101,30 +68,11 @@ const MISSIONS=["좋아하는 음식 3가지 말하기","최근 본 영화 제�
 
 function getName(pid){return(currentPlayers[pid]&&currentPlayers[pid].name)||'익명';}
 
-function renderEndButtons(container){
-  let html='<div class="end-buttons">';
-  if(isHost){
-    html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
-    html+='<button class="btn-lobby2" onclick="goToGameSelect()">🎮 다른 게임 선택</button>';
-  }else{
-    html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
-  }
-  html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
-  html+='</div>';
-  container.innerHTML=html;
-}
+function renderEndButtons(container){PartyUtils.renderEndButtons(container,isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});}
 
 async function restartGame(){if(!isHost)return;await gameRef.remove();initGame();}
 
-async function goToGameSelect(){
-  if(!isHost)return;
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.setBackToLobby();Presence.destroy();gameRef.off();if(checkTimer)clearInterval(checkTimer);
-  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
-  await new Promise(function(r){setTimeout(r,300);});
-  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
-}
+async function goToGameSelect(){if(!isHost)return;PartyUtils.goToGameSelect(roomCode,gameRef,function(){if(checkTimer)clearInterval(checkTimer);});}
 
 async function autoSkipHolder(holderId){
   if(!isHost)return;
@@ -144,26 +92,10 @@ async function init(){
   isHost=(hs.val()===playerId);
 
   Presence.init({roomCode,playerId,playerName,onAutoSkip:isHost?autoSkipHolder:null});
-
+  PartyUtils.initReactions(roomCode,playerId);
+  PartyUtils.listenCountdown(gameRef,isHost);
+  PartyUtils.listenBackToLobby(roomCode,gameRef,function(){if(checkTimer)clearInterval(checkTimer);});
   gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
-  listenCountdown();
-  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
-    Presence.destroy();gameRef.off();
-    sessionStorage.setItem('returnToLobby','true');
-    window.location.href='../index.html';
-  });
-  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    Presence.destroy();gameRef.off();
-    sessionStorage.removeItem('roomCode');
-    sessionStorage.removeItem('returnToLobby');
-    alert('방장이 방을 나갔습니다.');
-    window.location.href='../index.html';
-  });
   checkTimer=setInterval(async()=>{
     if(!isHost)return;
     const s=await gameRef.once('value');const d=s.val();
@@ -177,7 +109,8 @@ function initGame(){
   const pids=Object.keys(currentPlayers);
   const ms=[...MISSIONS].sort(()=>Math.random()-0.5);
   gameRef.set({round:1,phase:'countdown',holder:pids[0]||'',holderIdx:0,mission:ms[0]||'미션!',missions:ms,missionIdx:0,startTime:null,bombTime:Math.floor(Math.random()*10000)+8000,scores:{},explodedPlayer:null,roundId:Date.now()}).then(function(){
-    triggerCountdown('폭탄 돌리기 시작!',function(){
+    var rules='🔥 폭탄이 터지기 전에 미션 완료!<br>✅ 미션을 하고 다음 사람에게 넘기세요!<br>💥 시간이 다 되면 폭탄 소유자가 탈락!';
+    PartyUtils.triggerCountdown(gameRef,isHost,'폭탄 돌리기 시작!',rules,function(){
       gameRef.update({phase:'playing',startTime:Date.now()});
     });
   });
@@ -266,18 +199,12 @@ function renderFinal(scores){
   sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
   html+='</div><div id="endBtns"></div>';
   document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
-  renderEndButtons(document.getElementById('endBtns'));
+  PartyUtils.renderEndButtons(document.getElementById('endBtns'),isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});
+  PartyUtils.addPartyScore(roomCode,scores).then(function(){PartyUtils.renderPartyScoreBoard(roomCode,currentPlayers);});
   SoundEffects.play('fanfare');
 }
 
-async function backToLobby(){
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.setBackToLobby();
-  Presence.destroy();
-  gameRef.off();if(checkTimer)clearInterval(checkTimer);
-  const rc=Utils.getRoomCode();if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
-}
+async function backToLobby(){PartyUtils.backToLobby(roomCode,gameRef,function(){if(checkTimer)clearInterval(checkTimer);});}
 init();
 if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('tense');
 </script>

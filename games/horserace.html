@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<script src="../js/party-utils.js"></script>
 <link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -270,13 +271,7 @@ async function goToGameSelect(){
   if(raceTimer){clearInterval(raceTimer);raceTimer=null;}
   stopGallopSound();
   if(typeof stopBoostCountdown==='function')stopBoostCountdown();
-  Presence.setBackToLobby();Presence.destroy();gameRef.off();
-  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
-  await new Promise(function(r){setTimeout(r,300);});
-  await db.ref(`rooms/${roomCode}/currentGame`).remove();
-  await db.ref(`rooms/${roomCode}/gameData`).remove();
-  sessionStorage.setItem('returnToLobby','true');
-  window.location.href='../index.html';
+  PartyUtils.goToGameSelect(roomCode,gameRef,function(){if(raceTimer){clearInterval(raceTimer);raceTimer=null;}stopGallopSound();if(typeof stopBoostCountdown==='function')stopBoostCountdown();});
 }
 
 // ═══ 퀴즈 풀 ═══
@@ -422,28 +417,29 @@ async function hostStart(){
   const pids=Object.keys(currentPlayers);
   const n=Math.min(6,Math.max(3,pids.length+1));
 
+  var rules='🏇 말에 베팅하고 경주를 지켜보세요!<br>🏆 1등 말에 베팅하면 점수 획득!';
   if(selectedMode==='classic'){
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,color:HORSE_COLORS[i]});
     await gameRef.set({mode:'classic',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
-    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'betting'});});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'betting'});});
   }else if(selectedMode==='boost'){
     const horses=[];pids.forEach((pid,i)=>{horses.push({name:getName(pid),pos:0,pid,color:HORSE_COLORS[i%HORSE_COLORS.length]});});
     await gameRef.set({mode:'boost',round:1,phase:'countdown',horses,taps:{},scores:{},winner:-1,raceStart:null,roundId:Date.now()});
-    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'racing',raceStart:Date.now()});startGallopSound();});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'racing',raceStart:Date.now()});startGallopSound();});
   }else if(selectedMode==='quiz'){
     const horses=[];pids.forEach((pid,i)=>{horses.push({name:getName(pid),pos:0,pid,color:HORSE_COLORS[i%HORSE_COLORS.length]});});
     const quizzes=[...QUIZ_POOL].sort(()=>Math.random()-0.5).slice(0,15);
     await gameRef.set({mode:'quiz',round:1,phase:'countdown',horses,quizzes,qIdx:0,answers:null,scores:{},winner:-1,roundId:Date.now()});
-    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'question'});});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'question'});});
   }else if(selectedMode==='obstacle'){
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,color:HORSE_COLORS[i]});
     await gameRef.set({mode:'obstacle',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,event:null,turnNum:0,roundId:Date.now()});
-    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'betting'});});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'betting'});});
   }else if(selectedMode==='odds'){
     const oddsArr=[1.5,2,3,4,6,10].sort(()=>Math.random()-0.5).slice(0,n);
     const horses=[];for(let i=0;i<n;i++)horses.push({name:HORSE_NAMES[i],pos:0,odds:oddsArr[i],color:HORSE_COLORS[i]});
     await gameRef.set({mode:'odds',round:1,phase:'countdown',horses,bets:null,scores:{},winner:-1,roundId:Date.now()});
-    triggerCountdown('경마 시작!',function(){gameRef.update({phase:'betting'});});
+    PartyUtils.triggerCountdown(gameRef,isHost,'경마 시작!',rules,function(){gameRef.update({phase:'betting'});});
   }
 }
 
@@ -452,27 +448,10 @@ async function init(){
   const snap=await db.ref(`rooms/${roomCode}/players`).once('value');currentPlayers=snap.val()||{};
   const hs=await db.ref(`rooms/${roomCode}/host`).once('value');isHost=(hs.val()===playerId);
   Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
+  PartyUtils.initReactions(roomCode,playerId);
+  PartyUtils.listenCountdown(gameRef,isHost);
+  PartyUtils.listenBackToLobby(roomCode,gameRef,function(){if(raceTimer){clearInterval(raceTimer);raceTimer=null;}stopGallopSound();if(typeof stopBoostCountdown==='function')stopBoostCountdown();});
   gameRef.on('value',s=>{const d=s.val();if(!d){showModeSelect();return;}render(d);});
-  listenCountdown();
-  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
-    if(raceTimer){clearInterval(raceTimer);raceTimer=null;}
-    stopGallopSound();stopBoostCountdown();
-    Presence.destroy();gameRef.off();
-    sessionStorage.setItem('returnToLobby','true');
-    window.location.href='../index.html';
-  });
-  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    Presence.destroy();gameRef.off();
-    sessionStorage.removeItem('roomCode');
-    sessionStorage.removeItem('returnToLobby');
-    alert('방장이 방을 나갔습니다.');
-    window.location.href='../index.html';
-  });
 }
 
 function showModeSelect(){
@@ -761,19 +740,14 @@ function renderFinal(d){
   sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
   html+='</div><div id="endBtns"></div>';
   document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
-  renderEndButtons(document.getElementById('endBtns'));
+  PartyUtils.renderEndButtons(document.getElementById('endBtns'),isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});
+  PartyUtils.addPartyScore(roomCode,scores).then(function(){PartyUtils.renderPartyScoreBoard(roomCode,currentPlayers);});
   if(typeof SoundEffects.play==='function')SoundEffects.play('fanfare');
 }
 
 // ═══ 뒤로가기 ═══
 async function backToLobby(){
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  if(raceTimer){clearInterval(raceTimer);raceTimer=null;}
-  stopGallopSound();stopBoostCountdown();
-  Presence.setBackToLobby();
-  Presence.destroy();gameRef.off();
-  const rc=Utils.getRoomCode();if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+  PartyUtils.backToLobby(roomCode,gameRef,function(){if(raceTimer){clearInterval(raceTimer);raceTimer=null;}stopGallopSound();if(typeof stopBoostCountdown==='function')stopBoostCountdown();});
 }
 
 init();

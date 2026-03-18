@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<script src="../js/party-utils.js"></script>
 <link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -22,8 +23,8 @@ h1{font-size:1.6em;margin-bottom:8px}
 .spec-bar{position:relative;width:100%;height:50px;background:linear-gradient(90deg,#3498db,#e74c3c);border-radius:25px;cursor:pointer}
 .spec-bar.locked{opacity:0.6;cursor:not-allowed;pointer-events:none}
 .my-mk{position:absolute;top:-5px;width:26px;height:60px;background:rgba(255,255,255,0.9);border-radius:6px;transform:translateX(-13px);display:flex;align-items:center;justify-content:center;font-size:0.65em;color:#333;font-weight:bold;pointer-events:none;z-index:5}
-.ans-mk{position:absolute;top:-10px;width:4px;height:70px;background:#f1c40f;border-radius:2px;transform:translateX(-2px);pointer-events:none;z-index:10}
-.ans-tag{position:absolute;top:-28px;font-size:0.7em;color:#f1c40f;transform:translateX(-20px);white-space:nowrap;z-index:10}
+.avg-mk{position:absolute;top:-10px;width:4px;height:70px;background:#f1c40f;border-radius:2px;transform:translateX(-2px);pointer-events:none;z-index:10}
+.avg-tag{position:absolute;top:-28px;font-size:0.7em;color:#f1c40f;transform:translateX(-20px);white-space:nowrap;z-index:10}
 .dot-row{position:relative;width:100%;height:20px;margin-top:5px}
 .p-dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;transform:translateX(-7px);top:3px}
 .my-val{text-align:center;margin-top:8px;font-size:0.9em;color:rgba(255,255,255,0.6)}
@@ -41,66 +42,39 @@ h1{font-size:1.6em;margin-bottom:8px}
 </head>
 <body data-bgm="chill">
 <h1>🌈 스펙트럼</h1>
-<div class="info">질문에 대해 0~100 사이 스펙트럼에서 위치를 선택하세요!</div>
+<div class="info">질문에 대해 스펙트럼에서 위치를 선택! 전체 평균에 가까울수록 높은 점수!</div>
 <div class="status" id="status">⏳ 로딩 중...</div>
 <div class="q-text" id="qText"></div>
 <div class="spec-wrap" id="specWrap">
   <div class="spec-labels"><span id="lL">왼쪽</span><span id="lR">오른쪽</span></div>
-  <div class="spec-bar" id="bar"><div class="my-mk" id="myMk" style="display:none"></div><div class="ans-mk" id="ansMk" style="display:none"></div><div class="ans-tag" id="ansTag" style="display:none"></div></div>
+  <div class="spec-bar" id="bar">
+    <div class="my-mk" id="myMk" style="display:none"></div>
+    <div class="avg-mk" id="avgMk" style="display:none"></div>
+    <div class="avg-tag" id="avgTag" style="display:none"></div>
+  </div>
   <div class="dot-row" id="dotRow"></div>
   <div class="my-val" id="myVal"></div>
 </div>
+<div id="autoTimerArea"></div>
 <div id="resultArea" style="display:none"></div>
 <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
   <button class="btn btn-primary" id="btnConfirm" style="display:none" onclick="confirmPick()">✅ 확정!</button>
-  <button class="btn btn-primary" id="btnReveal" style="display:none" onclick="reveal()">👁️ 정답 공개</button>
+  <button class="btn btn-primary" id="btnReveal" style="display:none" onclick="reveal()">👁️ 결과 공개</button>
   <button class="btn btn-primary" id="btnNext" style="display:none" onclick="nextQ()">➡️ 다음</button>
   <button class="btn btn-back" id="btnBackMain" onclick="backToLobby()">🔙 로비로 돌아가기</button>
 </div>
 <div style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:6px 12px;border-radius:20px;font-size:0.8em;color:#fff;z-index:99999;display:flex;align-items:center;gap:6px;">
   🔊 <input type="range" min="0" max="100" value="50" style="width:70px;vertical-align:middle;" oninput="SoundEffects.setMasterVolume(this.value/100)">
-  <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'chill');this.textContent='🎵OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:0.8em;">🎵ON/OFF</button>
+  <button onclick="if(SoundEffects.bgmPlaying){SoundEffects.stopBGM();this.textContent='🎵ON';}else{SoundEffects.startBGM('chill');this.textContent='🎵OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:0.8em;">🎵ON/OFF</button>
 </div>
 <script>
-// ═══ 공통 카운트다운 (전체 동기화) ═══
-function triggerCountdown(subtitle,cb){
-  if(!isHost)return;
-  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
-  showCountdownUI(subtitle,cb);
-}
-function showCountdownUI(subtitle,cb){
-  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
-  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
-  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
-  document.body.appendChild(overlay);
-  var steps=['3','2','1','GO!'],i=0;
-  function tick(){
-    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
-    var txt=steps[i];overlay.innerHTML='';
-    var el=document.createElement('div');el.textContent=txt;
-    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    overlay.appendChild(el);
-    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
-    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
-    i++;setTimeout(tick,800);
-  }
-  tick();
-}
-var _lastCountdownId=null;
-function listenCountdown(){
-  gameRef.child('countdown').on('value',function(snap){
-    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
-    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
-    showCountdownUI(cd.subtitle||'게임 시작!',null);
-  });
-}
-const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
-const gameRef=db.ref(`rooms/${roomCode}/gameData`);
-let isHost=false,currentPlayers={},myValue=null,confirmed=false,lastRoundId=0;
-const TOTAL_ROUNDS=5;
-const QS=[
+const roomCode = Utils.getRoomCode(), playerId = Utils.getPlayerId(), playerName = Utils.getPlayerName();
+const gameRef = db.ref('rooms/' + roomCode + '/gameData');
+let isHost = false, currentPlayers = {}, myValue = null, confirmed = false, lastRoundId = 0;
+let autoSubmitStarted = false;
+const TOTAL_ROUNDS = 5;
+const AUTO_SUBMIT_SECONDS = 30;
+const QS = [
   {q:"짜장면 vs 짬뽕",left:"짜장면 100%",right:"짬뽕 100%"},
   {q:"아침형 인간인가요?",left:"완전 올빼미",right:"완전 아침형"},
   {q:"혼자 여행 vs 단체 여행",left:"혼자 최고",right:"단체 최고"},
@@ -113,181 +87,282 @@ const QS=[
   {q:"현실적 vs 이상적?",left:"완전 현실주의",right:"완전 이상주의"}
 ];
 
-function getName(pid){return(currentPlayers[pid]&&currentPlayers[pid].name)||'익명';}
+function getName(pid) { return (currentPlayers[pid] && currentPlayers[pid].name) || '익명'; }
 
-function renderEndButtons(container){
-  let html='<div class="end-buttons">';
-  if(isHost){
-    html+='<button class="btn-retry" onclick="restartGame()">🔄 다시하기</button>';
-    html+='<button class="btn-lobby2" onclick="goToGameSelect()">🎮 다른 게임 선택</button>';
-  }else{
-    html+='<p class="wait-msg">방장이 다음 게임을 준비하고 있습니다...</p>';
-  }
-  html+='<button class="btn-lobby2" onclick="backToLobby()">🏠 로비로</button>';
-  html+='</div>';
-  container.innerHTML=html;
-}
+async function restartGame() { if (!isHost) return; await gameRef.remove(); initGame(); }
+async function goToGameSelect() { if (!isHost) return; PartyUtils.goToGameSelect(roomCode, gameRef); }
+async function backToLobby() { PartyUtils.backToLobby(roomCode, gameRef); }
 
-async function restartGame(){if(!isHost)return;await gameRef.remove();initGame();}
+async function init() {
+  var snap = await db.ref('rooms/' + roomCode + '/players').once('value');
+  currentPlayers = snap.val() || {};
+  var hs = await db.ref('rooms/' + roomCode + '/host').once('value');
+  isHost = (hs.val() === playerId);
 
-async function goToGameSelect(){
-  if(!isHost)return;
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.setBackToLobby();Presence.destroy();gameRef.off();
-  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
-  await new Promise(function(r){setTimeout(r,300);});
-  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
-}
+  Presence.init({ roomCode: roomCode, playerId: playerId, playerName: playerName, onAutoSkip: null });
+  PartyUtils.initReactions(roomCode, playerId);
+  PartyUtils.listenCountdown(gameRef, isHost);
+  PartyUtils.listenBackToLobby(roomCode, gameRef);
 
-async function init(){
-  const snap=await db.ref(`rooms/${roomCode}/players`).once('value');
-  currentPlayers=snap.val()||{};
-  const hs=await db.ref(`rooms/${roomCode}/host`).once('value');
-  isHost=(hs.val()===playerId);
-  Presence.init({roomCode,playerId,playerName,onAutoSkip:null});
-  const bar=document.getElementById('bar');
-  bar.addEventListener('click',e=>{if(confirmed)return;const r=e.currentTarget.getBoundingClientRect();setVal(Math.round(((e.clientX-r.left)/r.width)*100));});
-  bar.addEventListener('touchstart',e=>{if(confirmed)return;e.preventDefault();const t=e.touches[0];const r=e.currentTarget.getBoundingClientRect();setVal(Math.round(((t.clientX-r.left)/r.width)*100));},{passive:false});
-  gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
-  listenCountdown();
-  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
-    Presence.destroy();gameRef.off();
-    sessionStorage.setItem('returnToLobby','true');
-    window.location.href='../index.html';
+  var bar = document.getElementById('bar');
+  bar.addEventListener('click', function(e) {
+    if (confirmed) return;
+    var r = e.currentTarget.getBoundingClientRect();
+    setVal(Math.round(((e.clientX - r.left) / r.width) * 100));
   });
-  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    Presence.destroy();gameRef.off();
-    sessionStorage.removeItem('roomCode');
-    sessionStorage.removeItem('returnToLobby');
-    alert('방장이 방을 나갔습니다.');
-    window.location.href='../index.html';
+  bar.addEventListener('touchstart', function(e) {
+    if (confirmed) return;
+    e.preventDefault();
+    var t = e.touches[0];
+    var r = e.currentTarget.getBoundingClientRect();
+    setVal(Math.round(((t.clientX - r.left) / r.width) * 100));
+  }, { passive: false });
+
+  PartyUtils.startCache(gameRef, function(d) {
+    if (!d) { if (isHost) initGame(); return; }
+    render(d);
   });
 }
 
-function initGame(){
-  const qs=[...QS].sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
-  qs.forEach(q=>{q.answer=Math.floor(Math.random()*60)+20;});
-  gameRef.set({round:1,phase:'countdown',questions:qs,choices:null,scores:{},roundId:Date.now()}).then(function(){
-    triggerCountdown('스펙트럼 시작!',function(){gameRef.update({phase:'choosing'});});
+function initGame() {
+  var qs = QS.slice().sort(function() { return Math.random() - 0.5; }).slice(0, TOTAL_ROUNDS);
+  gameRef.set({
+    round: 1,
+    phase: 'countdown',
+    questions: qs,
+    choices: null,
+    scores: {},
+    roundId: Date.now()
+  }).then(function() {
+    var rules = '🎯 스펙트럼에서 위치를 선택!<br>📊 전체 평균에 가까울수록 높은 점수!<br>⏰ 30초 안에 선택하세요!';
+    PartyUtils.triggerCountdown(gameRef, isHost, '스펙트럼 시작!', rules, function() {
+      gameRef.update({ phase: 'choosing' });
+    });
   });
 }
 
-function setVal(v){
-  myValue=Math.max(0,Math.min(100,v));SoundEffects.play('click');
-  const m=document.getElementById('myMk');m.style.display='';m.style.left=myValue+'%';m.textContent=myValue;
-  document.getElementById('myVal').textContent='내 선택: '+myValue;
-  document.getElementById('btnConfirm').style.display='';
+function setVal(v) {
+  myValue = Math.max(0, Math.min(100, v));
+  SoundEffects.play('click');
+  PartyUtils.vibrate(30);
+  var m = document.getElementById('myMk');
+  m.style.display = '';
+  m.style.left = myValue + '%';
+  m.textContent = myValue;
+  document.getElementById('myVal').textContent = '내 선택: ' + myValue;
+  document.getElementById('btnConfirm').style.display = '';
 }
 
-function confirmPick(){
-  if(myValue===null)return;confirmed=true;SoundEffects.play('correct');
-  gameRef.child(`choices/${playerId}`).set(myValue);
-  document.getElementById('btnConfirm').style.display='none';
+function confirmPick() {
+  if (myValue === null) return;
+  confirmed = true;
+  SoundEffects.play('correct');
+  PartyUtils.vibrateCorrect();
+  PartyUtils.clearAutoSubmitTimer('spec');
+  autoSubmitStarted = false;
+  gameRef.child('choices/' + playerId).set(myValue);
+  document.getElementById('btnConfirm').style.display = 'none';
   document.getElementById('bar').classList.add('locked');
-  document.getElementById('myVal').textContent='✅ '+myValue+'에 확정!';
+  document.getElementById('myVal').textContent = '✅ ' + myValue + '에 확정!';
 }
 
-function render(d){
-  if(!d)return;
-  const phase=d.phase||'choosing',round=d.round||1,qs=d.questions||[],choices=d.choices||{},scores=d.scores||{};
-  if(phase==='countdown'){
-    document.getElementById('status').textContent='⏳ 준비 중...';
-    document.getElementById('qText').textContent='';
-    document.getElementById('resultArea').style.display='none';
+function render(d) {
+  if (!d) return;
+  var phase = d.phase || 'choosing';
+  var round = d.round || 1;
+  var qs = d.questions || [];
+  var choices = d.choices || {};
+  var scores = d.scores || {};
+
+  if (phase === 'countdown') {
+    document.getElementById('status').textContent = '⏳ 준비 중...';
+    document.getElementById('qText').textContent = '';
+    document.getElementById('specWrap').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'none';
+    document.getElementById('btnConfirm').style.display = 'none';
+    document.getElementById('btnReveal').style.display = 'none';
+    document.getElementById('btnNext').style.display = 'none';
     return;
   }
-  if(phase==='final'){renderFinal(scores);return;}
-  if(round<1||round>qs.length)return;
-  const q=qs[round-1];if(!q)return;
 
-  if(d.roundId && d.roundId!==lastRoundId){
-    lastRoundId=d.roundId;
-    if(choices[playerId]===undefined){
-      confirmed=false;myValue=null;
-      document.getElementById('myMk').style.display='none';
-      document.getElementById('myVal').textContent='';
+  document.getElementById('specWrap').style.display = '';
+
+  if (phase === 'final') { renderFinal(scores); return; }
+  if (round < 1 || round > qs.length) return;
+  var q = qs[round - 1];
+  if (!q) return;
+
+  if (d.roundId && d.roundId !== lastRoundId) {
+    lastRoundId = d.roundId;
+    if (choices[playerId] === undefined) {
+      confirmed = false;
+      myValue = null;
+      autoSubmitStarted = false;
+      document.getElementById('myMk').style.display = 'none';
+      document.getElementById('myVal').textContent = '';
       document.getElementById('bar').classList.remove('locked');
     }
   }
 
-  document.getElementById('qText').textContent=`Q${round}. ${q.q}`;
-  document.getElementById('lL').textContent=q.left;
-  document.getElementById('lR').textContent=q.right;
+  document.getElementById('qText').textContent = 'Q' + round + '. ' + q.q;
+  document.getElementById('lL').textContent = q.left;
+  document.getElementById('lR').textContent = q.right;
 
-  if(choices[playerId]!==undefined){
-    confirmed=true;myValue=choices[playerId];
-    const m=document.getElementById('myMk');m.style.display='';m.style.left=myValue+'%';m.textContent=myValue;
-    document.getElementById('myVal').textContent='✅ '+myValue+'에 확정!';
+  if (choices[playerId] !== undefined) {
+    confirmed = true;
+    myValue = choices[playerId];
+    var m = document.getElementById('myMk');
+    m.style.display = '';
+    m.style.left = myValue + '%';
+    m.textContent = myValue;
+    document.getElementById('myVal').textContent = '✅ ' + myValue + '에 확정!';
     document.getElementById('bar').classList.add('locked');
   }
 
-  const statusEl=document.getElementById('status');
-  if(phase==='choosing'){
-    const cc=Object.keys(choices).length,tc=Object.keys(currentPlayers).length;
-    statusEl.textContent=`🤔 라운드 ${round}/${TOTAL_ROUNDS} — 선택 중 (${cc}/${tc})`;
-    document.getElementById('btnConfirm').style.display=(myValue!==null&&!confirmed)?'':'none';
-    document.getElementById('btnReveal').style.display=(isHost&&cc>=tc)?'':'none';
-    document.getElementById('btnNext').style.display='none';
-    document.getElementById('ansMk').style.display='none';document.getElementById('ansTag').style.display='none';
-    document.getElementById('dotRow').innerHTML='';document.getElementById('resultArea').style.display='none';
-  }else if(phase==='reveal'){
-    statusEl.textContent=`👁️ 라운드 ${round}/${TOTAL_ROUNDS} — 결과!`;
-    confirmed=true;document.getElementById('bar').classList.add('locked');
-    document.getElementById('btnConfirm').style.display='none';document.getElementById('btnReveal').style.display='none';
-    const ans=q.answer;
-    document.getElementById('ansMk').style.display='';document.getElementById('ansMk').style.left=ans+'%';
-    document.getElementById('ansTag').style.display='';document.getElementById('ansTag').style.left=ans+'%';document.getElementById('ansTag').textContent='정답:'+ans;
-    let dots='';Object.keys(currentPlayers).forEach((pid,i)=>{if(choices[pid]!==undefined)dots+=`<div class="p-dot" style="left:${choices[pid]}%;background:${Utils.getColor(i)}" title="${getName(pid)}:${choices[pid]}"></div>`;});
-    document.getElementById('dotRow').innerHTML=dots;
-    const results=Object.keys(currentPlayers).map(pid=>{const c=choices[pid];const diff=(c!==undefined)?Math.abs(c-ans):100;const pts=Math.max(0,10-Math.floor(diff/10));return{name:getName(pid),choice:c,diff,pts};}).sort((a,b)=>a.diff-b.diff);
-    let rHtml='<div class="result-box"><h3>📊 이번 라운드</h3>';
-    results.forEach(r=>{const icon=r.pts>=8?'🎯':r.pts>=5?'👍':'😅';rHtml+=`<div style="margin:3px 0">${icon} ${r.name}: ${r.choice!==undefined?r.choice:'-'} (차이:${r.diff}, +${r.pts}점)</div>`;});
-    rHtml+='</div>';document.getElementById('resultArea').innerHTML=rHtml;document.getElementById('resultArea').style.display='';
-    if(isHost){document.getElementById('btnNext').style.display='';document.getElementById('btnNext').textContent=(round>=TOTAL_ROUNDS)?'🏆 최종결과':'➡️ 다음';}
-    else document.getElementById('btnNext').style.display='none';
+  if (phase === 'choosing') {
+    var cc = Object.keys(choices).length;
+    var tc = Object.keys(currentPlayers).length;
+    document.getElementById('status').textContent = '🤔 라운드 ' + round + '/' + TOTAL_ROUNDS + ' — 선택 중 (' + cc + '/' + tc + ')';
+    document.getElementById('btnConfirm').style.display = (myValue !== null && !confirmed) ? '' : 'none';
+    document.getElementById('btnReveal').style.display = (isHost && cc >= tc) ? '' : 'none';
+    document.getElementById('btnNext').style.display = 'none';
+    document.getElementById('avgMk').style.display = 'none';
+    document.getElementById('avgTag').style.display = 'none';
+    document.getElementById('dotRow').innerHTML = '';
+    document.getElementById('resultArea').style.display = 'none';
+
+    if (!confirmed && !autoSubmitStarted) {
+      autoSubmitStarted = true;
+      PartyUtils.startAutoSubmitTimer('spec', AUTO_SUBMIT_SECONDS, '#autoTimerArea', function() {
+        if (myValue === null) myValue = 50;
+        confirmPick();
+      });
+    }
+    if (confirmed) {
+      PartyUtils.clearAutoSubmitTimer('spec');
+      autoSubmitStarted = false;
+    }
+
+  } else if (phase === 'reveal') {
+    PartyUtils.clearAutoSubmitTimer('spec');
+    autoSubmitStarted = false;
+
+    document.getElementById('status').textContent = '👁️ 라운드 ' + round + '/' + TOTAL_ROUNDS + ' — 결과!';
+    confirmed = true;
+    document.getElementById('bar').classList.add('locked');
+    document.getElementById('btnConfirm').style.display = 'none';
+    document.getElementById('btnReveal').style.display = 'none';
+
+    var allValues = Object.values(choices);
+    var avg = allValues.length > 0 ? Math.round(allValues.reduce(function(a, b) { return a + b; }, 0) / allValues.length) : 50;
+
+    document.getElementById('avgMk').style.display = '';
+    document.getElementById('avgMk').style.left = avg + '%';
+    document.getElementById('avgTag').style.display = '';
+    document.getElementById('avgTag').style.left = avg + '%';
+    document.getElementById('avgTag').textContent = '평균:' + avg;
+
+    var dots = '';
+    Object.keys(currentPlayers).forEach(function(pid, i) {
+      if (choices[pid] !== undefined) {
+        dots += '<div class="p-dot" style="left:' + choices[pid] + '%;background:' + Utils.getColor(i) + '" title="' + getName(pid) + ':' + choices[pid] + '"></div>';
+      }
+    });
+    document.getElementById('dotRow').innerHTML = dots;
+
+    var results = Object.keys(currentPlayers).map(function(pid) {
+      var c = choices[pid];
+      var diff = (c !== undefined) ? Math.abs(c - avg) : 100;
+      var pts = Math.max(0, 10 - Math.floor(diff / 5));
+      return { name: getName(pid), choice: c, diff: diff, pts: pts };
+    }).sort(function(a, b) { return a.diff - b.diff; });
+
+    var rHtml = '<div class="result-box"><h3>📊 이번 라운드 (평균: ' + avg + ')</h3>';
+    results.forEach(function(r) {
+      var icon = r.pts >= 8 ? '🎯' : r.pts >= 5 ? '👍' : '😅';
+      rHtml += '<div style="margin:3px 0">' + icon + ' ' + r.name + ': ' + (r.choice !== undefined ? r.choice : '-') + ' (차이:' + r.diff + ', +' + r.pts + '점)</div>';
+    });
+    rHtml += '</div>';
+    document.getElementById('resultArea').innerHTML = rHtml;
+    document.getElementById('resultArea').style.display = '';
+
+    if (isHost) {
+      document.getElementById('btnNext').style.display = '';
+      document.getElementById('btnNext').textContent = (round >= TOTAL_ROUNDS) ? '🏆 최종결과' : '➡️ 다음';
+    } else {
+      document.getElementById('btnNext').style.display = 'none';
+    }
   }
 }
 
-async function reveal(){
-  if(!isHost)return;SoundEffects.play('correct');
-  const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
-  const round=d.round||1,qs=d.questions||[],choices=d.choices||{},scores=d.scores||{};
-  const q=qs[round-1];if(!q)return;
-  Object.keys(choices).forEach(pid=>{const diff=Math.abs(choices[pid]-q.answer);scores[pid]=(scores[pid]||0)+Math.max(0,10-Math.floor(diff/10));});
-  await gameRef.update({phase:'reveal',scores});
+async function reveal() {
+  if (!isHost) return;
+  SoundEffects.play('correct');
+  var d = PartyUtils.getCached();
+  if (!d) return;
+  var round = d.round || 1, qs = d.questions || [], choices = d.choices || {}, scores = d.scores || {};
+
+  var allValues = Object.values(choices);
+  var avg = allValues.length > 0 ? Math.round(allValues.reduce(function(a, b) { return a + b; }, 0) / allValues.length) : 50;
+
+  Object.keys(choices).forEach(function(pid) {
+    var diff = Math.abs(choices[pid] - avg);
+    scores[pid] = (scores[pid] || 0) + Math.max(0, 10 - Math.floor(diff / 5));
+  });
+  await gameRef.update({ phase: 'reveal', scores: scores });
 }
 
-async function nextQ(){
-  if(!isHost)return;const snap=await gameRef.once('value');const d=snap.val();if(!d)return;
-  const round=d.round||1;
-  if(round>=TOTAL_ROUNDS){await gameRef.update({phase:'final'});return;}
-  await gameRef.update({round:round+1,phase:'choosing',choices:null,roundId:Date.now()});
+async function nextQ() {
+  if (!isHost) return;
+  var d = PartyUtils.getCached();
+  if (!d) return;
+  var round = d.round || 1;
+  if (round >= TOTAL_ROUNDS) { await gameRef.update({ phase: 'final' }); return; }
+  autoSubmitStarted = false;
+  await gameRef.update({ round: round + 1, phase: 'choosing', choices: null, roundId: Date.now() });
 }
 
-function renderFinal(scores){
+function renderFinal(scores) {
+  PartyUtils.clearAutoSubmitTimer('spec');
+  autoSubmitStarted = false;
   Presence.setGameEnded();
-  document.getElementById('status').textContent='🎉 게임 종료!';
-  document.getElementById('qText').textContent='';document.getElementById('specWrap').style.display='none';
-  document.getElementById('btnConfirm').style.display='none';document.getElementById('btnReveal').style.display='none';document.getElementById('btnNext').style.display='none';
-  document.getElementById('btnBackMain').style.display='none';
-  const sorted=Object.keys(currentPlayers).map(p=>({name:getName(p),score:scores[p]||0})).sort((a,b)=>b.score-a.score);
-  let html='<div class="result-box"><h2>🏆 최종 결과!</h2>';
-  sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
-  html+='</div><div id="endBtns"></div>';
-  document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
-  renderEndButtons(document.getElementById('endBtns'));
+
+  document.getElementById('status').textContent = '🎉 게임 종료!';
+  document.getElementById('qText').textContent = '';
+  document.getElementById('specWrap').style.display = 'none';
+  document.getElementById('btnConfirm').style.display = 'none';
+  document.getElementById('btnReveal').style.display = 'none';
+  document.getElementById('btnNext').style.display = 'none';
+  document.getElementById('btnBackMain').style.display = 'none';
+
+  var sorted = Object.keys(currentPlayers).map(function(p) {
+    return { name: getName(p), score: scores[p] || 0 };
+  }).sort(function(a, b) { return b.score - a.score; });
+
+  var html = '<div class="result-box"><h2>🏆 최종 결과!</h2>';
+  sorted.forEach(function(p, i) {
+    var m = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '▪️';
+    html += '<div style="font-size:1.1em;margin:4px 0">' + m + ' ' + p.name + ': ' + p.score + '점</div>';
+  });
+  html += '</div><div id="endBtns"></div>';
+  document.getElementById('resultArea').innerHTML = html;
+  document.getElementById('resultArea').style.display = '';
+
+  PartyUtils.renderEndButtons(document.getElementById('endBtns'), isHost, {
+    restart: 'restartGame()',
+    gameSelect: 'goToGameSelect()',
+    lobby: 'backToLobby()'
+  });
+
+  PartyUtils.addPartyScore(roomCode, scores).then(function() {
+    PartyUtils.renderPartyScoreBoard(roomCode, currentPlayers);
+  });
+
   SoundEffects.play('fanfare');
 }
 
-async function backToLobby(){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();Presence.setBackToLobby();Presence.destroy();gameRef.off();const rc=Utils.getRoomCode();if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';}
 init();
-if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('chill');
+if (typeof SoundEffects.startBGM === 'function') SoundEffects.startBGM('chill');
 </script>
 </body>
 </html>

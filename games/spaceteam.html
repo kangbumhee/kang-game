@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<script src="../js/party-utils.js"></script>
 <link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -221,12 +222,7 @@ async function goToDiffSelect(){
 
 async function goToGameSelect(){
   if(!isHost)return;
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  stopAllTimers();Presence.setBackToLobby();Presence.destroy();gameRef.off();
-  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
-  await new Promise(function(r){setTimeout(r,300);});
-  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+  PartyUtils.goToGameSelect(roomCode,gameRef,stopAllTimers);
 }
 
 function makeActionKey(cIdx,pIdx){return COLORS[cIdx]+' '+PARTS[pIdx];}
@@ -257,7 +253,8 @@ async function hostStart(){
     turnStart:null,
     roundId:Date.now()
   });
-  triggerCountdown('발사 준비!',function(){
+  var rules='🚀 화면의 명령을 수행하세요!<br>⚡ 버튼이 계속 바뀌니 빠르게!<br>❤️ HP가 0이 되면 우주선 파괴!';
+  PartyUtils.triggerCountdown(gameRef,isHost,'발사 준비!',rules,function(){
     gameRef.update({phase:'playing',turnStart:Date.now()});
   });
 }
@@ -319,24 +316,9 @@ async function init(){
     }
     render(d);
   });
-  listenCountdown();
-  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
-    Presence.destroy();gameRef.off();
-    sessionStorage.setItem('returnToLobby','true');
-    window.location.href='../index.html';
-  });
-  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    Presence.destroy();gameRef.off();
-    sessionStorage.removeItem('roomCode');
-    sessionStorage.removeItem('returnToLobby');
-    alert('방장이 방을 나갔습니다.');
-    window.location.href='../index.html';
-  });
+  PartyUtils.initReactions(roomCode,playerId);
+  PartyUtils.listenCountdown(gameRef,isHost);
+  PartyUtils.listenBackToLobby(roomCode,gameRef,stopAllTimers);
 }
 
 function showDiffSelect(){
@@ -394,7 +376,8 @@ function render(d){
     document.getElementById('btnBackMain').style.display='none';
     document.getElementById('resultArea').innerHTML='<div class="result-box" style="border-color:#2ecc71;background:rgba(46,204,113,0.1)"><h2>🎉 우주선 생존!</h2><div>모든 미션을 완료했습니다!</div></div><div id="endBtns"></div>';
     document.getElementById('resultArea').style.display='';
-    renderEndButtons(document.getElementById('endBtns'));
+    PartyUtils.renderEndButtons(document.getElementById('endBtns'),isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});
+    var scoreMap={};Object.keys(currentPlayers).forEach(p=>{scoreMap[p]=10;});PartyUtils.addPartyScore(roomCode,scoreMap).then(function(){PartyUtils.renderPartyScoreBoard(roomCode,currentPlayers);});
     SoundEffects.play('fanfare');
     return;
   }
@@ -409,7 +392,7 @@ function render(d){
     document.getElementById('btnBackMain').style.display='none';
     document.getElementById('resultArea').innerHTML='<div class="result-box"><h2>💥 우주선 파괴!</h2><div>내구도가 0이 되었습니다...</div></div><div id="endBtns"></div>';
     document.getElementById('resultArea').style.display='';
-    renderEndButtons(document.getElementById('endBtns'));
+    PartyUtils.renderEndButtons(document.getElementById('endBtns'),isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});
     SoundEffects.play('explode');
     return;
   }
@@ -626,15 +609,7 @@ async function doAction(action){
 
 // ── 뒤로가기 ──
 async function backToLobby(){
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  stopAllTimers();
-  Presence.setBackToLobby();
-  Presence.destroy();
-  gameRef.off();
-  const rc=Utils.getRoomCode();
-  if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
-  sessionStorage.setItem('returnToLobby','true');
-  window.location.href='../index.html';
+  PartyUtils.backToLobby(roomCode,gameRef,stopAllTimers);
 }
 
 init();

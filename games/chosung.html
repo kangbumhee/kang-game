@@ -9,6 +9,7 @@
 <script src="../js/firebase-config.js"></script>
 <script src="../js/sound.js"></script>
 <script src="../js/presence.js"></script>
+<script src="../js/party-utils.js"></script>
 <link rel="stylesheet" href="../css/style.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -68,40 +69,6 @@ h1{font-size:1.6em;margin-bottom:8px}
   <button onclick="if(SoundEffects.bgmPlaying){if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();this.textContent='🎵ON';}else{if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM(document.body.dataset.bgm||'tense');this.textContent='🎵OFF';}" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:0.8em;">🎵ON/OFF</button>
 </div>
 <script>
-// ═══ 공통 카운트다운 (전체 동기화) ═══
-function triggerCountdown(subtitle,cb){
-  if(!isHost)return;
-  var countdownId='cd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  gameRef.child('countdown').set({id:countdownId,subtitle:subtitle||'게임 시작!'});
-  showCountdownUI(subtitle,cb);
-}
-function showCountdownUI(subtitle,cb){
-  var old=document.getElementById('cdOverlayNew');if(old)old.remove();
-  var overlay=document.createElement('div');overlay.className='cd-overlay';overlay.id='cdOverlayNew';
-  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:999999;-webkit-transform:translateZ(0);transform:translateZ(0);';
-  document.body.appendChild(overlay);
-  var steps=['3','2','1','GO!'],i=0;
-  function tick(){
-    if(i>=steps.length){setTimeout(function(){overlay.remove();if(cb)cb();},400);return;}
-    var txt=steps[i];overlay.innerHTML='';
-    var el=document.createElement('div');el.textContent=txt;
-    if(txt==='GO!')el.style.cssText='font-size:25vw;font-weight:900;color:#2ecc71;text-shadow:0 0 30px rgba(46,204,113,0.6),0 0 60px rgba(46,204,113,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    else el.style.cssText='font-size:30vw;font-weight:900;color:#f1c40f;text-shadow:0 0 30px rgba(241,196,15,0.6),0 0 60px rgba(241,196,15,0.3);animation:cdPop 0.5s ease-out;line-height:1;text-align:center;';
-    overlay.appendChild(el);
-    if(txt!=='GO!'&&subtitle){var sub=document.createElement('div');sub.style.cssText='font-size:4vw;color:rgba(255,255,255,0.6);margin-top:10px;text-align:center;';sub.textContent=subtitle;overlay.appendChild(sub);}
-    if(typeof SoundEffects!=='undefined'&&typeof SoundEffects.play==='function')SoundEffects.play(txt==='GO!'?'go':'countdown');
-    i++;setTimeout(tick,800);
-  }
-  tick();
-}
-var _lastCountdownId=null;
-function listenCountdown(){
-  gameRef.child('countdown').on('value',function(snap){
-    var cd=snap.val();if(!cd||!cd.id)return;if(isHost)return;
-    if(cd.id===_lastCountdownId)return;_lastCountdownId=cd.id;
-    showCountdownUI(cd.subtitle||'게임 시작!',null);
-  });
-}
 const roomCode=Utils.getRoomCode(),playerId=Utils.getPlayerId(),playerName=Utils.getPlayerName();
 const gameRef=db.ref(`rooms/${roomCode}/gameData`);
 let isHost=false,currentPlayers={},tickTimer=null;
@@ -131,18 +98,13 @@ async function restartGame(){if(!isHost)return;await gameRef.remove();initGame()
 
 async function goToGameSelect(){
   if(!isHost)return;
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.setBackToLobby();Presence.destroy();gameRef.off();if(tickTimer)clearInterval(tickTimer);
-  await db.ref(`rooms/${roomCode}/backToLobby`).set(Date.now());
-  await new Promise(function(r){setTimeout(r,300);});
-  await db.ref(`rooms/${roomCode}/currentGame`).remove();await db.ref(`rooms/${roomCode}/gameData`).remove();
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+  PartyUtils.goToGameSelect(roomCode,gameRef,function(){if(tickTimer)clearInterval(tickTimer);});
 }
 
 async function autoSkipHolder(holderId) {
   if(!isHost) return;
-  const snap = await gameRef.once('value');
-  const d = snap.val();
+  let d = PartyUtils.getCached();
+  if(!d){const snap=await gameRef.once('value');d=snap.val();}
   if(!d || d.phase!=='playing' || d.holder!==holderId) return;
   const pids = Object.keys(currentPlayers);
   const nextIdx = ((d.holderIdx||0)+1) % pids.length;
@@ -162,27 +124,12 @@ async function init(){
   });
 
   document.getElementById('ansInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitAnswer();});
-  gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
-  listenCountdown();
-  db.ref(`rooms/${roomCode}/backToLobby`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    if(typeof Presence.setBackToLobby==='function')Presence.setBackToLobby();
-    Presence.destroy();gameRef.off();
-    sessionStorage.setItem('returnToLobby','true');
-    window.location.href='../index.html';
-  });
-  db.ref(`rooms/${roomCode}/disbanded`).on('value',snap=>{
-    if(!snap.val())return;
-    if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-    Presence.destroy();gameRef.off();
-    sessionStorage.removeItem('roomCode');
-    sessionStorage.removeItem('returnToLobby');
-    alert('방장이 방을 나갔습니다.');
-    window.location.href='../index.html';
-  });
+  PartyUtils.initReactions(roomCode,playerId);
+  PartyUtils.listenCountdown(gameRef,isHost);
+  PartyUtils.listenBackToLobby(roomCode,gameRef,function(){if(tickTimer)clearInterval(tickTimer);});
+  PartyUtils.startCache(gameRef,function(d){if(!d){if(isHost)initGame();return;}render(d);});
   tickTimer=setInterval(async()=>{
-    const s=await gameRef.once('value');const d=s.val();
+    const d=PartyUtils.getCached();
     if(!d||d.phase!=='playing')return;
     const elapsed=Math.floor((Date.now()-(d.startTime||Date.now()))/1000);
     const left=Math.max(0,(d.timeLeft||10)-elapsed);
@@ -197,7 +144,8 @@ function initGame(){
   const pids=Object.keys(currentPlayers);
   const qs=[...CHOSUNG_SETS].sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
   gameRef.set({round:1,phase:'countdown',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:null,roundId:Date.now()}).then(function(){
-    triggerCountdown('초성 폭탄 시작!',function(){
+    var rules='💣 초성에 맞는 단어를 입력!<br>⏰ 시간 안에 못 맞추면 폭발!<br>✅ 정답을 내면 다음 사람에게 폭탄 전달!';
+    PartyUtils.triggerCountdown(gameRef,isHost,'초성 폭탄 시작!',rules,function(){
       gameRef.update({phase:'playing',startTime:Date.now()});
     });
   });
@@ -250,11 +198,11 @@ async function submitAnswer(){
   const snap=await gameRef.once('value');const d=snap.val();
   if(!d||d.phase!=='playing'||d.holder!==playerId)return;
   const used=d.usedWords||{};
-  if(used[word]){SoundEffects.play('wrong');return;}
+  if(used[word]){SoundEffects.play('wrong');PartyUtils.vibrateWrong();return;}
   const cho=(d.questions[(d.round||1)-1]||{}).cho||'';
   const target=cho.replace(/\s/g,'');
-  if(!getChosung(word).startsWith(target)){SoundEffects.play('wrong');return;}
-  SoundEffects.play('correct');
+  if(!getChosung(word).startsWith(target)){SoundEffects.play('wrong');PartyUtils.vibrateWrong();return;}
+  SoundEffects.play('correct');PartyUtils.vibrateCorrect();
   const pids=Object.keys(currentPlayers);
   const nextIdx=((d.holderIdx||0)+1)%pids.length;
   const key='a'+Date.now();
@@ -271,7 +219,7 @@ function getChosung(str){
 async function explode(d){
   const holder=d.holder||'';const scores=d.scores||{};
   Object.keys(currentPlayers).forEach(p=>{if(p===holder)scores[p]=(scores[p]||0)-5;else scores[p]=(scores[p]||0)+5;});
-  SoundEffects.play('explode');
+  SoundEffects.play('explode');PartyUtils.vibrateExplode();
   await gameRef.update({phase:'exploded',exploded:holder,scores});
 }
 
@@ -304,18 +252,13 @@ function renderFinal(scores){
   sorted.forEach((p,i)=>{const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'▪️';html+=`<div style="font-size:1.1em;margin:4px 0">${m} ${p.name}: ${p.score}점</div>`;});
   html+='</div><div id="endBtns"></div>';
   document.getElementById('resultArea').innerHTML=html;document.getElementById('resultArea').style.display='';
-  renderEndButtons(document.getElementById('endBtns'));
+  PartyUtils.renderEndButtons(document.getElementById('endBtns'),isHost,{restart:'restartGame()',gameSelect:'goToGameSelect()',lobby:'backToLobby()'});
+  PartyUtils.addPartyScore(roomCode,scores).then(function(){PartyUtils.renderPartyScoreBoard(roomCode,currentPlayers);});
   SoundEffects.play('fanfare');
 }
 
 async function backToLobby(){
-  if(typeof SoundEffects.stopBGM==='function')SoundEffects.stopBGM();
-  Presence.setBackToLobby();
-  Presence.destroy();
-  gameRef.off();if(tickTimer)clearInterval(tickTimer);
-  const rc=Utils.getRoomCode();
-  if(rc){await db.ref(`rooms/${rc}/currentGame`).remove();await db.ref(`rooms/${rc}/gameData`).remove();}
-  sessionStorage.setItem('returnToLobby','true');window.location.href='../index.html';
+  PartyUtils.backToLobby(roomCode,gameRef,function(){if(tickTimer)clearInterval(tickTimer);});
 }
 init();
 if(typeof SoundEffects.startBGM==='function')SoundEffects.startBGM('tense');

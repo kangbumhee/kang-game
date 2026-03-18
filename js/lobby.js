@@ -227,6 +227,39 @@ const Lobby = {
     });
     this.listeners.push(disbandRef);
 
+    // ── 파티 누적 스코어 표시 ──
+    const partyScoreRef = db.ref(`rooms/${this.roomCode}/partyScore`);
+    partyScoreRef.on('value', (snap) => {
+      const scores = snap.val() || {};
+      let scoreDiv = document.getElementById('partyScoreLobby');
+      if (!scoreDiv) {
+        scoreDiv = document.createElement('div');
+        scoreDiv.id = 'partyScoreLobby';
+        scoreDiv.style.cssText = 'background:rgba(241,196,15,0.08);border:1px solid rgba(241,196,15,0.2);border-radius:12px;padding:12px;margin:10px auto;max-width:500px;text-align:center;';
+        const hostCtrl = document.getElementById('hostControls');
+        if (hostCtrl) hostCtrl.parentNode.insertBefore(scoreDiv, hostCtrl);
+      }
+      if (!Object.keys(scores).length) {
+        scoreDiv.style.display = 'none';
+        return;
+      }
+      scoreDiv.style.display = '';
+      db.ref(`rooms/${this.roomCode}/players`).once('value').then((pSnap) => {
+        const players = pSnap.val() || {};
+        const sorted = Object.keys(players).map((pid) => ({
+          name: (players[pid] && players[pid].name) || '익명',
+          score: scores[pid] || 0
+        })).sort((a, b) => b.score - a.score);
+        let html = '<div style="font-size:0.9em;color:#f1c40f;margin-bottom:6px;">🏆 파티 누적 점수</div>';
+        sorted.forEach((p, i) => {
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + '.';
+          html += '<div style="font-size:0.9em;margin:2px 0;">' + medal + ' ' + p.name + ': ' + p.score + '점</div>';
+        });
+        scoreDiv.innerHTML = html;
+      });
+    });
+    this.listeners.push(partyScoreRef);
+
     // ── 오프라인 플레이어 자동 제거 (방장만, 30초 이상 오프라인) ──
     this._startStaleCheck();
   },
