@@ -128,10 +128,15 @@ async function init(){
   PartyUtils.listenCountdown(gameRef,isHost);
   PartyUtils.listenBackToLobby(roomCode,gameRef,function(){if(tickTimer)clearInterval(tickTimer);});
   PartyUtils.startCache(gameRef,function(d){if(!d){if(isHost)initGame();return;}render(d);});
-  tickTimer=setInterval(async()=>{
+  tickTimer=setInterval(function(){
     const d=PartyUtils.getCached();
     if(!d||d.phase!=='playing')return;
-    const elapsed=Math.floor((Date.now()-(d.startTime||Date.now()))/1000);
+    if(!d.startTime){
+      const el=document.getElementById('timer');
+      if(el){el.textContent='--';el.className='timer-circle';}
+      return;
+    }
+    const elapsed=Math.floor((Date.now()-d.startTime)/1000);
     const left=Math.max(0,(d.timeLeft||10)-elapsed);
     const el=document.getElementById('timer');
     el.textContent=left;
@@ -143,9 +148,11 @@ async function init(){
 function initGame(){
   const pids=Object.keys(currentPlayers);
   const qs=[...CHOSUNG_SETS].sort(()=>Math.random()-0.5).slice(0,TOTAL_ROUNDS);
-  gameRef.set({round:1,phase:'playing',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:Date.now(),roundId:Date.now()}).then(function(){
-    var rules='💣 초성에 맞는 단어 입력!<br>⏰ 시간 안에 못 맞추면 폭발!<br>✅ 정답을 내면 다음 사람에게 전달!';
-    PartyUtils.triggerCountdown(gameRef,isHost,'초성 폭탄!',rules,null);
+  gameRef.set({round:1,phase:'playing',questions:qs,holder:pids[0]||'',holderIdx:0,timeLeft:10,answers:null,usedWords:null,scores:{},exploded:null,startTime:null,roundId:Date.now()}).then(function(){
+    var rules='💣 초성에 맞는 단어 입력!<br>⏰ 시간 안에 못 맞추면 폭발!<br>✅ 정답 후 다음 사람에게 전달!';
+    PartyUtils.triggerCountdown(gameRef,isHost,'초성 폭탄!',rules,function(){
+      gameRef.update({startTime:Date.now()});
+    });
   });
 }
 
@@ -163,8 +170,16 @@ function render(d){
 
   if(phase==='playing'){
     document.getElementById('status').textContent=`💣 라운드 ${round}/${TOTAL_ROUNDS}`;
+    if(!d.startTime){
+      document.getElementById('inputArea').style.display='none';
+      document.getElementById('holder').innerHTML='⏳ 곧 시작합니다...';
+      document.getElementById('resultArea').style.display='none';
+      document.getElementById('btnNext').style.display='none';
+      return;
+    }
     document.getElementById('inputArea').style.display=(holder===playerId)?'flex':'none';
     if(holder===playerId)document.getElementById('ansInput').focus();
+    document.getElementById('holder').innerHTML=`폭탄 소유자: <b style="color:#f39c12">${getName(holder)}</b>`;
     const answers=d.answers||{};
     let aHtml='';Object.values(answers).forEach(a=>{aHtml+=`<span class="ans-chip">${a.word} (${a.name})</span>`;});
     document.getElementById('answers').innerHTML=aHtml;

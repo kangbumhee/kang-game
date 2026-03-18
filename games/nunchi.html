@@ -253,14 +253,14 @@ async function hostStart(){
       lastPicker:null,
       lapCount:1,
       turnTimeLimit:10,
-      turnStart:Date.now()
+      turnStart:null
     });
   }else if(selectedMode==='auction'){
     const coins={};pids.forEach(p=>{coins[p]=100;});
     const items=generateAuctionItems();
     Object.assign(base,{coins,items,bids:null,itemIdx:0});
   }else if(selectedMode==='reverse'){
-    Object.assign(base,{currentNum:0,taps:null,timeLimit:15,roundStart:Date.now()});
+    Object.assign(base,{currentNum:0,taps:null,timeLimit:15,roundStart:null});
   }else if(selectedMode==='bomb'){
     const al=pids.slice();
     const maxNum=pids.length*8+10;
@@ -284,8 +284,18 @@ async function hostStart(){
 
   base.phase='playing';
   await gameRef.set(base);
-  var rules=selectedMode==='classic'?'🔢 1부터 순서대로 숫자를 외치세요!<br>⚠️ 동시에 외치거나 마지막에 남으면 탈락!':selectedMode==='target'?'🎯 목표 숫자에 맞추세요!<br>💥 합이 넘으면 마지막에 낸 사람 탈락!':'눈치 게임 시작!';
-  PartyUtils.triggerCountdown(gameRef,isHost,'눈치 게임 시작!',rules,null);
+  var rulesMap={
+    classic:'🔢 1부터 순서대로 숫자를 외치세요!<br>⚠️ 동시에 외치거나 마지막에 남으면 탈락!',
+    target:'🎯 목표 숫자에 딱 맞추세요!<br>💥 합이 넘으면 마지막 사람 탈락!<br>⏰ 턴마다 제한시간!',
+    auction:'💰 물건 가치를 예측해서 입찰!<br>🏆 가장 가까운 사람이 획득!',
+    reverse:'🔄 가장 늦게 누르면 생존!<br>⚠️ 아무도 안 누르면 전원 탈락!<br>⏰ 15초 제한!',
+    bomb:'💣 숨겨진 폭탄 숫자를 피해라!<br>1~3칸 전진 선택!<br>💥 폭탄을 밟으면 탈락!'
+  };
+  var rules=rulesMap[selectedMode]||'눈치 게임 시작!';
+  PartyUtils.triggerCountdown(gameRef,isHost,'눈치 게임!',rules,function(){
+    if(selectedMode==='target')gameRef.update({turnStart:Date.now()});
+    else if(selectedMode==='reverse')gameRef.update({roundStart:Date.now()});
+  });
 }
 
 function generateAuctionItems(){
@@ -328,7 +338,8 @@ async function init(){
     targetTimeoutChecker=setInterval(async()=>{
       const s=await gameRef.once('value');const dd=s.val();
       if(!dd||dd.mode!=='target'||dd.phase!=='playing')return;
-      const elapsed=(Date.now()-(dd.turnStart||Date.now()))/1000;
+      if(!dd.turnStart)return;
+      const elapsed=(Date.now()-dd.turnStart)/1000;
       const limit=dd.turnTimeLimit||10;
       if(elapsed<limit)return;
       const alive=dd.alive||{};
@@ -531,6 +542,14 @@ function renderTarget(d){
   Presence.setCurrentHolder(phase==='playing'?currentTurn:null);
 
   if(phase==='playing'){
+    if(!d.turnStart){
+      document.getElementById('status').textContent=`🎯 라운드 ${round}/${TOTAL_ROUNDS} — 곧 시작!`;
+      document.getElementById('dynamicArea').innerHTML='<div style="text-align:center;margin:20px;color:rgba(255,255,255,0.5);">곧 시작됩니다...</div>';
+      document.getElementById('orderList').innerHTML='';
+      document.getElementById('resultArea').style.display='none';
+      document.getElementById('btnNext').style.display='none';
+      return;
+    }
     const isMyTurn=(currentTurn===playerId);
     const amAlive=alive[playerId];
     const remaining=target-currentSum;
@@ -612,7 +631,7 @@ function renderTarget(d){
     document.getElementById('resultArea').style.display='none';
     document.getElementById('btnNext').style.display='none';
 
-    startTargetTurnTimer(d.turnStart||Date.now(), turnTimeLimit, currentTurn);
+    startTargetTurnTimer(d.turnStart, turnTimeLimit, currentTurn);
 
   }else if(phase==='roundEnd'){
     stopTargetTurnTimer();
@@ -842,9 +861,17 @@ function renderReverse(d){
   const phase=d.phase,round=d.round||1,alive=d.alive||{},taps=d.taps||{};
   const timeLimit=d.timeLimit||15;
   reverseTimeLimit=timeLimit;
-  reverseRoundStart=d.roundStart||Date.now();
+  reverseRoundStart=d.roundStart||0;
 
   if(phase==='playing'){
+    if(!d.roundStart){
+      document.getElementById('status').textContent=`🔄 라운드 ${round}/${TOTAL_ROUNDS} — 곧 시작!`;
+      document.getElementById('dynamicArea').innerHTML='<div style="text-align:center;margin:20px;color:rgba(255,255,255,0.5);">곧 시작됩니다...</div>';
+      document.getElementById('resultArea').style.display='none';
+      document.getElementById('btnNext').style.display='none';
+      return;
+    }
+    reverseRoundStart=d.roundStart;
     const amAlive=alive[playerId];
     const hasTapped=!!taps[playerId];
 
@@ -865,8 +892,9 @@ function renderReverse(d){
       reverseCheckTimer=setInterval(async()=>{
         const s=await gameRef.once('value');const dd=s.val();
         if(!dd||dd.phase!=='playing'||dd.mode!=='reverse'){clearInterval(reverseCheckTimer);reverseCheckTimer=null;return;}
-        const el=Math.floor((Date.now()-(dd.roundStart||Date.now()))/1000);
-        if(el>=timeLimit)checkReverseEnd(dd);
+        if(!dd.roundStart)return;
+        const el=Math.floor((Date.now()-dd.roundStart)/1000);
+        if(el>=(dd.timeLimit||15))checkReverseEnd(dd);
       },500);
     }
   }else if(phase==='roundEnd'){

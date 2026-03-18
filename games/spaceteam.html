@@ -216,11 +216,13 @@ async function hostStart(){
     total:TOTAL_MISSIONS,
     commands:cmds,
     cmdIdx:0,
-    turnStart:Date.now(),
+    turnStart:null,
     roundId:Date.now()
   });
   var rules='🚀 화면의 명령을 수행하세요!<br>⚡ 버튼이 바뀌니 빠르게!<br>❤️ HP 0 = 우주선 파괴!';
-  PartyUtils.triggerCountdown(gameRef,isHost,'발사 준비!',rules,null);
+  PartyUtils.triggerCountdown(gameRef,isHost,'발사 준비!',rules,function(){
+    gameRef.update({turnStart:Date.now()});
+  });
 }
 
 function generateCommands(pids){
@@ -365,6 +367,14 @@ function render(d){
   const curr=cmds[idx];if(!curr)return;
   const isMyCmd=(curr.target===playerId);
 
+  if(!d.turnStart){
+    document.getElementById('status').textContent='🚀 발사 준비 중...';
+    document.getElementById('commandBox').style.display='none';
+    document.getElementById('actionBtns').innerHTML='<div style="text-align:center;color:rgba(255,255,255,0.5);padding:20px;">곧 시작됩니다...</div>';
+    document.getElementById('turnTimerWrap').style.display='none';
+    return;
+  }
+
   Presence.setCurrentHolder(curr.target);
 
   document.getElementById('status').textContent=`🚀 우주선에 탑승 중... (HP: ${hp}%)`;
@@ -375,7 +385,7 @@ function render(d){
   // 턴 타이머 표시
   if(config.turnTime>0){
     document.getElementById('turnTimerWrap').style.display='';
-    startTurnTimerUI(d.turnStart||Date.now(), config.turnTime);
+    startTurnTimerUI(d.turnStart, config.turnTime);
   }else{
     document.getElementById('turnTimerWrap').style.display='none';
   }
@@ -454,10 +464,11 @@ function startTurnTimerUI(startTime, maxSec){
   if(turnTimerRAF)cancelAnimationFrame(turnTimerRAF);
   const fill=document.getElementById('turnTimerFill');
   function tick(){
+    if(!startTime){if(fill)fill.style.width='100%';return;}
     const elapsed=(Date.now()-startTime)/1000;
     const pct=Math.max(0,100-((elapsed/maxSec)*100));
-    fill.style.width=pct+'%';
-    if(pct>0) turnTimerRAF=requestAnimationFrame(tick);
+    if(fill)fill.style.width=pct+'%';
+    if(pct>0)turnTimerRAF=requestAnimationFrame(tick);
   }
   tick();
 }
@@ -467,7 +478,8 @@ let turnTimeoutId=null;
 function startTurnTimeout(d, curr){
   if(!isHost||!config.turnTime)return;
   if(turnTimeoutId)clearTimeout(turnTimeoutId);
-  const elapsed=Date.now()-(d.turnStart||Date.now());
+  if(!d.turnStart)return;
+  const elapsed=Date.now()-d.turnStart;
   const remain=Math.max(0, config.turnTime*1000-elapsed);
   turnTimeoutId=setTimeout(async()=>{
     const snap=await gameRef.once('value');const fresh=snap.val();
@@ -494,6 +506,7 @@ function startHpTimer(){
     if(!d||d.phase!=='playing'){
       clearInterval(hpTimer);hpTimer=null;hpTimerStarted=false;return;
     }
+    if(!d.turnStart)return;
     if((d.completed||0)>=TOTAL_MISSIONS){
       clearInterval(hpTimer);hpTimer=null;hpTimerStarted=false;return;
     }

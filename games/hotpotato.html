@@ -95,12 +95,13 @@ async function init(){
   PartyUtils.initReactions(roomCode,playerId);
   PartyUtils.listenCountdown(gameRef,isHost);
   PartyUtils.listenBackToLobby(roomCode,gameRef,function(){if(checkTimer)clearInterval(checkTimer);});
-  gameRef.on('value',s=>{const d=s.val();if(!d){if(isHost)initGame();return;}render(d);});
-  checkTimer=setInterval(async()=>{
+  PartyUtils.startCache(gameRef,function(d){if(!d){if(isHost)initGame();return;}render(d);});
+  checkTimer=setInterval(function(){
     if(!isHost)return;
-    const s=await gameRef.once('value');const d=s.val();
+    const d=PartyUtils.getCached();
     if(!d||d.phase!=='playing')return;
-    const elapsed=Date.now()-(d.startTime||Date.now());
+    if(!d.startTime)return;
+    const elapsed=Date.now()-d.startTime;
     if(elapsed>=(d.bombTime||15000))explode(d);
   },500);
 }
@@ -108,9 +109,11 @@ async function init(){
 function initGame(){
   const pids=Object.keys(currentPlayers);
   const ms=[...MISSIONS].sort(()=>Math.random()-0.5);
-  gameRef.set({round:1,phase:'playing',holder:pids[0]||'',holderIdx:0,mission:ms[0]||'미션!',missions:ms,missionIdx:0,startTime:Date.now(),bombTime:Math.floor(Math.random()*10000)+8000,scores:{},explodedPlayer:null,roundId:Date.now()}).then(function(){
+  gameRef.set({round:1,phase:'playing',holder:pids[0]||'',holderIdx:0,mission:ms[0]||'미션!',missions:ms,missionIdx:0,startTime:null,bombTime:Math.floor(Math.random()*10000)+8000,scores:{},explodedPlayer:null,roundId:Date.now()}).then(function(){
     var rules='🔥 폭탄이 터지기 전에 미션 완료!<br>✅ 미션 후 다음 사람에게 넘기기!<br>💥 시간 초과 시 소유자 탈락!';
-    PartyUtils.triggerCountdown(gameRef,isHost,'폭탄 돌리기!',rules,null);
+    PartyUtils.triggerCountdown(gameRef,isHost,'폭탄 돌리기!',rules,function(){
+      gameRef.update({startTime:Date.now()});
+    });
   });
 }
 
@@ -125,6 +128,13 @@ function render(d){
   Presence.setCurrentHolder(holder);
 
   if(phase==='playing'){
+    if(!d.startTime){
+      document.getElementById('status').textContent=`🔥 라운드 ${round}/${TOTAL_ROUNDS} — 곧 시작!`;
+      document.getElementById('passBtn').disabled=true;
+      document.getElementById('passBtn').style.display='';
+      document.getElementById('resultArea').style.display='none';document.getElementById('btnNext').style.display='none';
+      return;
+    }
     document.getElementById('status').textContent=`🔥 라운드 ${round}/${TOTAL_ROUNDS} — 폭탄이 돌아갑니다!`;
     document.getElementById('bomb').textContent='💣';document.getElementById('bomb').className='bomb';
     document.getElementById('passBtn').disabled=(holder!==playerId);
